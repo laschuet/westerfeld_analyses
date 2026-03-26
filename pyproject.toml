@@ -1,0 +1,7 @@
+[project]
+name = "westerfeld-analyses"
+version = "0.1.0"
+description = "Accompanying repository"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
