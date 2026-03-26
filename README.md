@@ -41,7 +41,10 @@ should be located next to this README.
 
 ## Analyses
 
-TODO.
+Run the analyses:
+```
+uv run westerfeld/ncm.py
+```
 
 ## License
 
