@@ -3,7 +3,7 @@ import networkx as nx
 from grakel.utils import graph_from_networkx
 from grakel.kernels import ShortestPath, RandomWalk, WeisfeilerLehman, Kernel
 
-from lib.settings import USE_PHYLUM_LABELS_FOR_WEISFEILER_LEHMAN_KERNEL
+from graph.settings import USE_PHYLUM_LABELS_FOR_WEISFEILER_LEHMAN_KERNEL
 
 THREADS_AMOUNT = 1
 
@@ -18,7 +18,6 @@ def generic_kernel_on_graph(Gs_nx: list[nx.Graph], kernal_to_use: Kernel, label=
 
 def to_grakel_graph(G_nx: nx.Graph, attribute=None):
     G_nx = G_nx.copy()
-    print(list(G_nx.nodes(data=True)))
     if (attribute == None):
         # in this case we would need to create "dummy" labels.
         # we will use the nodes index/name, and thus, we will use the (unique) species name.
