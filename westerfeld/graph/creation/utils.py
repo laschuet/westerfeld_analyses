@@ -1,8 +1,6 @@
 import pandas as pd
 import networkx as nx
-
 from abc import ABC, abstractmethod
-
 
 class GraphCreationMethod(ABC):
     @classmethod

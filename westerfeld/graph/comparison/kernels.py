@@ -2,13 +2,9 @@ import networkx as nx
 
 from grakel.utils import graph_from_networkx
 from grakel.kernels import ShortestPath, RandomWalk, WeisfeilerLehman, Kernel
-
 from graph.settings import USE_PHYLUM_LABELS_FOR_WEISFEILER_LEHMAN_KERNEL
 
 THREADS_AMOUNT = 1
-
-# -- from: https://github.com/ysig/GraKeL/blob/master/examples/nx_to_grakel.py
-
 
 def generic_kernel_on_graph(Gs_nx: list[nx.Graph], kernal_to_use: Kernel, label=None):
     Gs = [to_grakel_graph(g, attribute=label)for g in Gs_nx]
