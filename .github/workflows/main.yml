@@ -67,6 +67,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: docker/Dockerfile 
           # Push only on main branch push or version tags (not on PRs)
           push: ${{ github.event_name != 'pull_request' }}
           # Build for multiple platforms (remove if not needed)
