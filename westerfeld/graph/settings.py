@@ -1,6 +1,6 @@
 # General
-INPUT_FILE = "data/df_2019_fs.csv"  # The path to the input of the network
-LOOKUP_FILE = "data/df_fungi.csv"  # The path to the input of the network
+INPUT_FILE = "../df_Fungi_19_F_Co_.csv"  # The path to the input of the network
+LOOKUP_FILE = "../df_fungi.csv"  # The path to the input of the network
 NODE_NAME = "Species"  # This can be Species, but also OTUs or AVSs / identifier
 
 # Graph creation method

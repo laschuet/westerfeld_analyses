@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 
 import matplotlib.pyplot as plt
@@ -204,7 +203,6 @@ def compare_graphs_pairwise_on(graphs:list[nx.Graph], names:list[str], metric:st
 
 
 def full_multiple_graphs_evaluation(raw_data: pd.DataFrame, transformed_data: list, seperator: np.ndarray, phylums : np.ndarray, lookup_data: pd.DataFrame):
-
     # create graphs and figures per data
     graphs: list[nx.Graph] = []
     graph_creator = get_graph_creator()
@@ -222,10 +220,8 @@ def full_multiple_graphs_evaluation(raw_data: pd.DataFrame, transformed_data: li
     compare_graphs_pairwise_on(graphs=graphs, names=seperator, metric="kernel_weisfeiler_lehman", out="out/kernel_weisfeiler_lehman_norm.png", normalized=True)
     compare_graphs_pairwise_on(graphs=graphs, names=seperator, metric="kernel_shortest_path", out="out/kernel_shortest_path.png", normalized=False)
     compare_graphs_pairwise_on(graphs=graphs, names=seperator, metric="kernel_weisfeiler_lehman", out="out/kernel_weisfeiler_lehman.png", normalized=False)
-    #compare_graphs_pairwise_on(graphs=graphs, names=seperator, metric="kernel_random_walk", out="out/kernel_random_walk.png")
     #compare_graphs_pairwise_on(graphs=graphs, names=seperator, metric="edit_distance", out="out/edit_distance_matrics.png") # this is very expensive to calculate!
 
-    # currently disable -> too expensive
     for i in range(len(graphs)):
         for j in range(len(graphs)):
             if(i > j):

@@ -110,7 +110,6 @@ def preprocessing(
     # fill nans with zeros (just in case)
     df_t.fillna(0, inplace=True)
 
-    # if CONVERT_FROM_ABSOLUTE_TO_RELATIVE: -> we at least need this so we can later identify specialist and generalists
     relative_df = df_t.copy(deep=True)
     logging.info("Convert absolute abundances to relative abundances")
     for index, row in relative_df.iterrows():
@@ -120,7 +119,6 @@ def preprocessing(
         )
 
     if CONVERT_FROM_ABSOLUTE_TO_RELATIVE:
-        # if checked -> work with relative
         df_t = relative_df.copy(deep=True)
 
     if USE_MCLR:

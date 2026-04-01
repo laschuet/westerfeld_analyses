@@ -1,0 +1,6 @@
+.venv
+out
+**__pycache__**
+uv.lock
+*.pdf
+*xlsx

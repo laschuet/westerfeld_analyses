@@ -7,10 +7,6 @@ from .utils import GraphCreationMethod
 from sklearn.covariance import GraphicalLasso
 from sklearn.covariance import GraphicalLassoCV
 
-# from gglasso.helper.utils import sparsity, zero_replacement, normalize, log_transform
-# from gglasso.problem import glasso_problem
-# from gglasso.helper.basic_linalg import scale_array_by_diagonal
-
 from typing import Tuple
 
 import pandas as pd
@@ -34,7 +30,6 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
         look_up_frame: pd.DataFrame,
         relative_data: pd.DataFrame,
     ) -> nx.Graph:
-        # https://gglasso.readthedocs.io/en/latest/auto_examples/plot_soil_example.html#sphx-glr-auto-examples-plot-soil-example-py
         # lasso method (https://scikit-learn.org/stable/modules/generated/sklearn.covariance.GraphicalLasso.html)
         df_t
 
