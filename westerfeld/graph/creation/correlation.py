@@ -73,7 +73,7 @@ class CorrelationGraphCreationMethod(GraphCreationMethod):
                 specOrGen, mean_average_relative_abudances, bj = (
                     identifiy_generalists_or_specialists(relative_data[node].to_numpy())
                 )
-                attributes.loc["generalist_or_specialists"] = (
+e               attributes.loc["generalist_or_specialists"] = (
                     specOrGen if specOrGen is not None else "None"
                 )
                 nodes_attr[node] = attributes

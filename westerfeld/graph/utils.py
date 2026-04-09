@@ -1,10 +1,16 @@
+import logging
+import math
+
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
+import pandas as pd
+
+from itertools import count
+from pathlib import Path
+from typing import Literal, Optional, Tuple
 
 from matplotlib.lines import Line2D
-from itertools import count
-
-import numpy as np
 from scipy.stats import gmean
 
 from graph.settings import (
@@ -21,53 +27,37 @@ from graph.settings import (
     ZERO_RATION_THRESHOLD,
 )
 
-import pandas as pd
-import logging
-import math
 
-from pathlib import Path
-from typing import Literal, Optional, Tuple
-
-
-def read_data(
-    input: str | pd.DataFrame, lookup: str | pd.DataFrame
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def read_data(input: str, lookup: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     Path("out").mkdir(parents=True, exist_ok=True)
     logging.info("Import input file/load dataframe")
-    # check if filepath or a dataframe directly
-    if type(input) is not pd.DataFrame:
-        df = pd.read_csv(input)
-        df = df.set_index(NODE_NAME)
-    else:
-        df = input
-    if type(lookup) is not pd.DataFrame:
-        look_up_frame = pd.read_csv(lookup)
-        look_up_frame = look_up_frame[
-            [
-                "Species",
-                "Kingdom",
-                "Phylum",
-                "Class",
-                "Order",
-                "Family",
-                "Genus",
-                "Trophic_Mode",
-                "Guild",
-                "Confidence_Ranking",
-                "Growth_Morphology",
-                "Trait",
-            ]
-        ].drop_duplicates()
-        look_up_frame = look_up_frame.set_index(NODE_NAME)
-    else:
-        look_up_frame = lookup
+
+    df = pd.read_csv(input)
+    df = df.set_index(NODE_NAME)
+
+    look_up_frame = pd.read_csv(lookup)
+    look_up_frame = look_up_frame[
+        [
+            "Species",
+            "Kingdom",
+            "Phylum",
+            "Class",
+            "Order",
+            "Family",
+            "Genus",
+            "Trophic_Mode",
+            "Guild",
+            "Confidence_Ranking",
+            "Growth_Morphology",
+            "Trait",
+        ]
+    ].drop_duplicates()
+    look_up_frame = look_up_frame.set_index(NODE_NAME)
+
     return df, look_up_frame
 
 
-def preprocessing(
-    input: str | pd.DataFrame, lookup: str | pd.DataFrame
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    # read in file and preprocess data
+def preprocessing(input: str, lookup: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df, look_up_frame = read_data(input, lookup)
 
     before_reduction_amount = df.shape[0]
@@ -133,6 +123,7 @@ def preprocessing(
                 lambda x: (x + epsilon) if x != 0 else 0,
             )
             df_t.loc[index] = row
+
     return df_t, look_up_frame, relative_df
 
 

@@ -1,40 +1,37 @@
-from sklearn.discriminant_analysis import StandardScaler
-
-from graph.settings import GLASSO_ALPHAS, GLASSO_MAX_ITER, INVERSE_VARIANCE_ZERO_THRESHOLD
-from graph.utils import identifiy_generalists_or_specialists
-
-from .utils import GraphCreationMethod
-from sklearn.covariance import GraphicalLasso
-from sklearn.covariance import GraphicalLassoCV
-
-from typing import Tuple
-
-import pandas as pd
 import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+
+from sklearn.covariance import GraphicalLassoCV
+from sklearn.discriminant_analysis import StandardScaler
+
+from .utils import GraphCreationMethod
+from graph.settings import (
+    GLASSO_ALPHAS,
+    GLASSO_MAX_ITER,
+    INVERSE_VARIANCE_ZERO_THRESHOLD,
+)
+from graph.utils import identifiy_generalists_or_specialists
 
 
 class GlassoGraphCreationMethod(GraphCreationMethod):
     @classmethod
-    def calculate_covariance(
-        cls, df_t: pd.DataFrame
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        cov = np.cov(df_t)
-        return cov
+    def calculate_covariance(cls, df: pd.DataFrame) -> np.ndarray:
+        return np.cov(df)
 
     @classmethod
     def create_network(
         cls,
-        df_t: pd.DataFrame,
-        look_up_frame: pd.DataFrame,
-        relative_data: pd.DataFrame,
+        df: pd.DataFrame,
+        look_up_frame: pd.DataFrame | None = None,
+        relative_data: pd.DataFrame | None = None,
     ) -> nx.Graph:
         # lasso method (https://scikit-learn.org/stable/modules/generated/sklearn.covariance.GraphicalLasso.html)
-        df_t
+        df
 
-        cov_est = np.cov(df_t.T.values, bias=True)
-        cov_corr = np.corrcoef(df_t.T.values)
+        cov_est = np.cov(df.T.values, bias=True)
+        cov_corr = np.corrcoef(df.T.values)
         cls.plot_covariance_matrix(cov_est, "estimated")
         cls.plot_covariance_matrix(cov_corr, "correlation")
 
@@ -50,11 +47,11 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
         cov = np.where(np.abs(cov) < INVERSE_VARIANCE_ZERO_THRESHOLD, 0, cov)
         cls.plot_covariance_matrix(cov, "glasso_estimated")
 
-        cov_df = pd.DataFrame(cov, index=df_t.columns, columns=df_t.columns)
+        cov_df = pd.DataFrame(cov, index=df.columns, columns=df.columns)
 
         G = nx.Graph()
-        for i, taxon_i in enumerate(df_t.columns):
-            for j, taxon_j in enumerate(df_t.columns):
+        for i, taxon_i in enumerate(df.columns):
+            for j, taxon_j in enumerate(df.columns):
                 if i < j and abs(cov_df.loc[taxon_i, taxon_j]) != 0:
                     G.add_edge(
                         taxon_i,
@@ -63,20 +60,9 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
                         positiv_correlation=cov_df.loc[taxon_i, taxon_j] > 0,
                     )
 
-        nodesAttr = dict(G.nodes)
+        nodes_attr = dict(G.nodes)
         nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "specOrGen", "bj"})
-        for node in G.nodes:
-            attributes = look_up_frame.loc[node]
-            specOrGen, mean_average_relative_abudances, bj = (
-                identifiy_generalists_or_specialists(relative_data[node].to_numpy())
-            )
-            attributes.loc["generalist_or_specialists"] = (
-                specOrGen if specOrGen is not None else "None"
-            )
-            nodesAttr[node] = attributes
-            nodes_bjs = pd.DataFrame(
-                columns=["mean_average_relative_abudances", "specOrGen", "bj"]
-            )
+        if look_up_frame is not None and relative_data is not None:
             for node in G.nodes:
                 attributes = look_up_frame.loc[node]
                 specOrGen, mean_average_relative_abudances, bj = (
@@ -85,14 +71,26 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
                 attributes.loc["generalist_or_specialists"] = (
                     specOrGen if specOrGen is not None else "None"
                 )
-                nodesAttr[node] = attributes
-                nodes_bjs.loc[node] = [
-                    mean_average_relative_abudances,
-                    specOrGen if specOrGen is not None else "None",
-                    bj,
-                ]
+                nodes_attr[node] = attributes
+                nodes_bjs = pd.DataFrame(
+                    columns=["mean_average_relative_abudances", "specOrGen", "bj"]
+                )
+                for node in G.nodes:
+                    attributes = look_up_frame.loc[node]
+                    specOrGen, mean_average_relative_abudances, bj = (
+                        identifiy_generalists_or_specialists(relative_data[node].to_numpy())
+                    )
+                    attributes.loc["generalist_or_specialists"] = (
+                        specOrGen if specOrGen is not None else "None"
+                    )
+                    nodes_attr[node] = attributes
+                    nodes_bjs.loc[node] = [
+                        mean_average_relative_abudances,
+                        specOrGen if specOrGen is not None else "None",
+                        bj,
+                    ]
 
-        nx.set_node_attributes(G, nodesAttr)
+        nx.set_node_attributes(G, nodes_attr)
         return G
 
     @classmethod
@@ -118,4 +116,3 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
         plt.savefig(
             f"out/covariance_matrix_{postfix}.png", dpi=300, bbox_inches="tight"
         )
-

@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from graph.settings import GRAPH_CREATOR_NAME
+
 
 def get_graph_creator():
     if GRAPH_CREATOR_NAME == "correlation":

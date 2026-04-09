@@ -1,20 +1,22 @@
 import networkx as nx
 
-from grakel.utils import graph_from_networkx
 from grakel.kernels import ShortestPath, RandomWalk, WeisfeilerLehman, Kernel
+from grakel.utils import graph_from_networkx
+
 from graph.settings import USE_PHYLUM_LABELS_FOR_WEISFEILER_LEHMAN_KERNEL
 
 THREADS_AMOUNT = 1
 
+
 def generic_kernel_on_graph(Gs_nx: list[nx.Graph], kernal_to_use: Kernel, label=None):
-    Gs = [to_grakel_graph(g, attribute=label)for g in Gs_nx]
+    Gs = [to_grakel_graph(g, attribute=label) for g in Gs_nx]
     K = kernal_to_use.fit_transform(Gs)
     return K
 
 
 def to_grakel_graph(G_nx: nx.Graph, attribute=None):
     G_nx = G_nx.copy()
-    if (attribute == None):
+    if attribute is None:
         # in this case we would need to create "dummy" labels.
         # we will use the nodes index/name, and thus, we will use the (unique) species name.
         nodesAttr = dict(G_nx.nodes)
@@ -31,15 +33,14 @@ def kernel_graph(Gs_nx: list[nx.Graph], kernel: str = "", normalize=False):
         case "shortest_path":
             K = generic_kernel_on_graph(Gs_nx, ShortestPath(normalize))
         case "random_walk":
-            K = generic_kernel_on_graph(
-                Gs_nx,
-                RandomWalk(normalize=normalize)
-            )
+            K = generic_kernel_on_graph(Gs_nx, RandomWalk(normalize=normalize))
         case "weisfeiler_lehman":
             K = generic_kernel_on_graph(
                 Gs_nx,
                 WeisfeilerLehman(normalize=normalize),
-                label="Phylum" if USE_PHYLUM_LABELS_FOR_WEISFEILER_LEHMAN_KERNEL else None
+                label="Phylum"
+                if USE_PHYLUM_LABELS_FOR_WEISFEILER_LEHMAN_KERNEL
+                else None,
             )
         case _:
             K = generic_kernel_on_graph(Gs_nx, ShortestPath(normalize))
