@@ -43,13 +43,11 @@ class CorrelationGraphCreationMethod(GraphCreationMethod):
     def create_network(
         cls,
         df: pd.DataFrame,
-        look_up_frame: pd.DataFrame | None = None,
-        relative_data: pd.DataFrame | None = None,
+        df_lookup: pd.DataFrame | None = None,
+        df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
-        # calculate correlations
         corr_df, pval_df = cls.calculate_correlations(df)
 
-        # create network
         G = nx.Graph()
         for i, taxon_i in enumerate(df.columns):
             for j, taxon_j in enumerate(df.columns):
@@ -66,25 +64,25 @@ class CorrelationGraphCreationMethod(GraphCreationMethod):
                     )
 
         nodes_attr = dict(G.nodes)
-        nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "specOrGen", "bj"})
-        if look_up_frame is not None and relative_data is not None:
+        nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "spec_or_gen", "bj"})
+        if df_lookup is not None and df_relative is not None:
             for node in G.nodes:
-                attributes = look_up_frame.loc[node]
-                specOrGen, mean_average_relative_abudances, bj = (
-                    identifiy_generalists_or_specialists(relative_data[node].to_numpy())
+                attributes = df_lookup.loc[node]
+                spec_or_gen, mean_average_relative_abudances, bj = (
+                    identifiy_generalists_or_specialists(df_relative[node].to_numpy())
                 )
-e               attributes.loc["generalist_or_specialists"] = (
-                    specOrGen if specOrGen is not None else "None"
+                attributes.loc["generalist_or_specialists"] = (
+                    spec_or_gen if spec_or_gen is not None else "None"
                 )
                 nodes_attr[node] = attributes
                 nodes_bjs = pd.DataFrame(
-                    columns=["mean_average_relative_abudances", "specOrGen", "bj"]
+                    columns=["mean_average_relative_abudances", "spec_or_gen", "bj"]
                 )
                 for node in G.nodes:
-                    attributes = look_up_frame.loc[node]
+                    attributes = df_lookup.loc[node]
                     specOrGen, mean_average_relative_abudances, bj = (
                         identifiy_generalists_or_specialists(
-                            relative_data[node].to_numpy()
+                            df_relative[node].to_numpy()
                         )
                     )
                     attributes.loc["generalist_or_specialists"] = (

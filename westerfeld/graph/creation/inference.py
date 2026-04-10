@@ -24,12 +24,10 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
     def create_network(
         cls,
         df: pd.DataFrame,
-        look_up_frame: pd.DataFrame | None = None,
-        relative_data: pd.DataFrame | None = None,
+        df_lookup: pd.DataFrame | None = None,
+        df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
-        # lasso method (https://scikit-learn.org/stable/modules/generated/sklearn.covariance.GraphicalLasso.html)
-        df
-
+        # Lasso method (https://scikit-learn.org/stable/modules/generated/sklearn.covariance.GraphicalLasso.html)
         cov_est = np.cov(df.T.values, bias=True)
         cov_corr = np.corrcoef(df.T.values)
         cls.plot_covariance_matrix(cov_est, "estimated")
@@ -61,24 +59,26 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
                     )
 
         nodes_attr = dict(G.nodes)
-        nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "specOrGen", "bj"})
-        if look_up_frame is not None and relative_data is not None:
+        nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "spec_or_gen", "bj"})
+        if df_lookup is not None and df_relative is not None:
             for node in G.nodes:
-                attributes = look_up_frame.loc[node]
-                specOrGen, mean_average_relative_abudances, bj = (
-                    identifiy_generalists_or_specialists(relative_data[node].to_numpy())
+                attributes = df_lookup.loc[node]
+                spec_or_gen, mean_average_relative_abudances, bj = (
+                    identifiy_generalists_or_specialists(df_relative[node].to_numpy())
                 )
                 attributes.loc["generalist_or_specialists"] = (
-                    specOrGen if specOrGen is not None else "None"
+                    spec_or_gen if spec_or_gen is not None else "None"
                 )
                 nodes_attr[node] = attributes
                 nodes_bjs = pd.DataFrame(
-                    columns=["mean_average_relative_abudances", "specOrGen", "bj"]
+                    columns=["mean_average_relative_abudances", "spec_or_gen", "bj"]
                 )
                 for node in G.nodes:
-                    attributes = look_up_frame.loc[node]
+                    attributes = df_lookup.loc[node]
                     specOrGen, mean_average_relative_abudances, bj = (
-                        identifiy_generalists_or_specialists(relative_data[node].to_numpy())
+                        identifiy_generalists_or_specialists(
+                            df_relative[node].to_numpy()
+                        )
                     )
                     attributes.loc["generalist_or_specialists"] = (
                         specOrGen if specOrGen is not None else "None"

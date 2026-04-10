@@ -23,8 +23,8 @@ from graph.settings import (
     NODE_NAME,
     USE_ABSOLUTE_THRESHOLD_TO_OBTAIN_COMMON_ASVS,
     USE_MCLR,
-    USE_ZERO_RATION_TO_OBTAIN_COMMON_ASVS,
-    ZERO_RATION_THRESHOLD,
+    USE_ZERO_RATIO_TO_OBTAIN_COMMON_ASVS,
+    ZERO_RATIO_THRESHOLD,
 )
 
 
@@ -57,63 +57,63 @@ def read_data(input: str, lookup: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     return df, look_up_frame
 
 
-def preprocessing(input: str, lookup: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df, look_up_frame = read_data(input, lookup)
+def preprocessing(
+    input: str, lookup: str
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    df, df_lookup = read_data(input, lookup)
 
     before_reduction_amount = df.shape[0]
 
     if USE_ABSOLUTE_THRESHOLD_TO_OBTAIN_COMMON_ASVS:
         logging.info(
-            f"Remove all avs with total abundances less than threshold of {ABSOLUTE_THRESHOLD}."
+            f"Remove all ASVs with total abundances less than threshold of {ABSOLUTE_THRESHOLD}."
         )
         shape_before = df.shape
-        # transpose, so we can itterate over rows
         for index, row in df.iterrows():
             abundances_sum = row.sum()
             if abundances_sum < ABSOLUTE_THRESHOLD:
                 df = df.drop(index=index)
         logging.info(
-            f"Removed: {shape_before[0] - df.shape[0]} asvs! ({shape_before[0]} -> {df.shape[0]}); removed {((shape_before[0] - df.shape[0]) / shape_before[0]):.3f}%!"
+            f"Removed: {shape_before[0] - df.shape[0]} ASVs! ({shape_before[0]} -> {df.shape[0]}); removed {((shape_before[0] - df.shape[0]) / shape_before[0]):.3f}%!"
         )
 
-    if USE_ZERO_RATION_TO_OBTAIN_COMMON_ASVS:
+    if USE_ZERO_RATIO_TO_OBTAIN_COMMON_ASVS:
         logging.info(
-            f"Remove all avs that have a zero abundance ration above {ZERO_RATION_THRESHOLD}."
+            f"Remove all ASVs that have a zero abundance ratio above {ZERO_RATIO_THRESHOLD}."
         )
         shape_before = df.shape
-        # transpose, so we can itterate over rows
         for index, row in df.iterrows():
             zero_ratio = (len(row) - row.count()) / len(row)
-            if zero_ratio > ZERO_RATION_THRESHOLD:
+            if zero_ratio > ZERO_RATIO_THRESHOLD:
                 df = df.drop(index=index)
         logging.info(
-            f"Removed: {shape_before[0] - df.shape[0]} asvs! ({shape_before[0]} -> {df.shape[0]}); removed {((shape_before[0] - df.shape[0]) / shape_before[0]):.3f}%!"
+            f"Removed: {shape_before[0] - df.shape[0]} ASVs! ({shape_before[0]} -> {df.shape[0]}); removed {((shape_before[0] - df.shape[0]) / shape_before[0]):.3f}%!"
         )
 
     logging.info(
-        f"OVERALL: Removed {before_reduction_amount - df.shape[0]} asvs! ({before_reduction_amount} -> {df.shape[0]}); removed {((before_reduction_amount - df.shape[0]) / before_reduction_amount):.3f}%!"
+        f"OVERALL: Removed {before_reduction_amount - df.shape[0]} ASVs! ({before_reduction_amount} -> {df.shape[0]}); removed {((before_reduction_amount - df.shape[0]) / before_reduction_amount):.3f}%!"
     )
 
     # Transpose so samples are rows and species are columns
-    df_t = df.T
+    df = df.T
 
-    # fill nans with zeros (just in case)
-    df_t.fillna(0, inplace=True)
+    # Fill NaNs with zeros (just in case)
+    df.fillna(0, inplace=True)
 
-    relative_df = df_t.copy(deep=True)
+    df_relative = df.copy(deep=True)
     logging.info("Convert absolute abundances to relative abundances")
-    for index, row in relative_df.iterrows():
+    for index, row in df_relative.iterrows():
         abundances_sum = row.sum()
-        relative_df.loc[index] = relative_df.loc[index].apply(
+        df_relative.loc[index] = df_relative.loc[index].apply(
             lambda x: x / abundances_sum if abundances_sum != 0 else 0
         )
 
     if CONVERT_FROM_ABSOLUTE_TO_RELATIVE:
-        df_t = relative_df.copy(deep=True)
+        df = df_relative.copy(deep=True)
 
     if USE_MCLR:
-        # transform via mCLR
-        for index, row in df_t.iterrows():
+        # Transform via mCLR
+        for index, row in df.iterrows():
             non_zero_elements = row[row > 0]
             geometric_mean = gmean(non_zero_elements)
             row = row.apply(lambda x: (math.log10(x / geometric_mean)) if x != 0 else 0)
@@ -122,29 +122,28 @@ def preprocessing(input: str, lookup: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
             row = row.apply(
                 lambda x: (x + epsilon) if x != 0 else 0,
             )
-            df_t.loc[index] = row
+            df.loc[index] = row
 
-    return df_t, look_up_frame, relative_df
+    return df, df_lookup, df_relative
 
 
 def calc_iou(d1, d2):
     union = set(d1 + d2)
-    sect = np.intersect1d(d1, d2)
-    return len(sect) / len(union)
+    intersect = np.intersect1d(d1, d2)
+    return len(intersect) / len(union)
 
 
 def identifiy_generalists_or_specialists(
     Pj: np.ndarray,
-) -> Optional[Literal["Specialist", "Generalist"]]:
+) -> Tuple[Optional[Literal["Specialist", "Generalist"]], np.ndarray, np.ndarray]:
     """
-    implementation of the niche breadth approach. described in https://www.researchgate.net/publication/309922017_The_importance_of_neutral_and_niche_processes_for_bacterial_community_assembly_differs_between_habitat_generalists_and_specialists?enrichId=rgreq-e53157fd5b364b94816e907d1105b272-XXX&enrichSource=Y292ZXJQYWdlOzMwOTkyMjAxNztBUzo4NTY0NDI0NzkzMjUxODlAMTU4MTIwMzIwNzYwNA%3D%3D&el=1_x_2&_esc=publicationCoverPdf (doi not correct??)
+    Implementation of the niche breadth approach as described in https://doi.org/10.1093/femsec/fiw174
     """
     Pj = Pj / Pj.sum()
     mean_average_relative_abudances = Pj.mean()
     if mean_average_relative_abudances < MEAN_RELATIVE_ABUNDANCES_LOWER_THRESHOLD:
-        return None
+        return None, np.array([]), np.array([])
     Bj = 1 / (Pj**2).sum()
-    # 1 / np.sum(Pj**2, axis=0)  #1 / (Pj ** 2).sum() (alternative)
     if Bj > B_VALUE_GENERALIST_THRESHOLD:
         return "Generalist", mean_average_relative_abudances, Bj
     elif Bj < B_VALUE_SPECIALIST_THRESHOLD:

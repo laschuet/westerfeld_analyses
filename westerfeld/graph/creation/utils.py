@@ -10,7 +10,7 @@ class GraphCreationMethod(ABC):
     def create_network(
         cls,
         df: pd.DataFrame,
-        look_up_frame: pd.DataFrame | None = None,
-        relative_data: pd.DataFrame | None = None,
+        df_lookup: pd.DataFrame | None = None,
+        df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
         pass
