@@ -14,10 +14,14 @@ from _utils import (
 
 from graph.settings import INPUT_FILE, LOOKUP_FILE, USE_MCLR, MCLR_C
 from graph.creation.registry import get_graph_creator
+from graph.utils import calc_iou
 from graph.utils import read_data
 from graph.utils import preprocessing
 from graph.utils import create_figure
-from graph.comparison.utils import full_multiple_graphs_evaluation
+from graph.comparison.utils import (
+    compare_graphs_pairwise_on,
+    full_multiple_graphs_evaluation,
+)
 
 
 def example_single_graph():
@@ -215,6 +219,14 @@ def main():
         beneficials="Control",
         crops=["Grain maize", "Winter wheat 1", "Winter wheat 2"],
     )
+
+    print(graph_1)
+    print(graph_2)
+
+    nodes_gi = list(graph_1.nodes)
+    nodes_gj = list(graph_2.nodes)
+    print(calc_iou(nodes_gi, nodes_gj))
+    print(calc_iou(nodes_gj, nodes_gi))
 
 
 if __name__ == "__main__":
