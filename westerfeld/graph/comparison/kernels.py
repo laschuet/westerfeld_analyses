@@ -43,7 +43,7 @@ def kernel_graph(Gs_nx: list[nx.Graph], kernel: str = "", normalize=False):
                 else None,
             )
         case _:
-            K = generic_kernel_on_graph(Gs_nx, ShortestPath(normalize))
+            K = generic_kernel_on_graph(Gs_nx, ShortestPath(normalize=normalize))
     return K
 
 
