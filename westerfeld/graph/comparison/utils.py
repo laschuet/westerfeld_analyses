@@ -6,10 +6,11 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from grakel import ShortestPath, WeisfeilerLehman
 from scipy.stats import entropy
 
-from graph.comparison.kernels import kernel_graph
 from graph.creation.registry import get_graph_creator
+from graph.comparison.kernels import graph_kernel
 from graph.utils import calc_iou, preprocessing, visualize_graphs, create_figure_simple
 
 
@@ -228,7 +229,8 @@ def compare_graphs_pairwise_on(
                 ]
                 res.at[i, j] = calc_iou(edges_gi, edges_gj)
             elif metric == "edit_distance":
-                # metric to compare the graphs. The value is the minimal edits needed (edges/nodes) so the graphs would be isometric
+                # metric to compare the graphs.
+                # The value is the minimal edits needed (edges/nodes) so the graphs would be isometric
                 distance = -1
                 for edits in nx.optimal_edit_paths(
                     graphs[numeric_i], graphs[numeric_j]
@@ -236,18 +238,14 @@ def compare_graphs_pairwise_on(
                     distance = edits
                 res.at[i, j] = distance
             elif metric == "kernel_shortest_path":
-                res.at[i, j] = kernel_graph(
+                res.at[i, j] = graph_kernel(
                     [graphs[numeric_i], graphs[numeric_j]],
-                    "shortest_path",
-                    normalize=normalized,
+                    ShortestPath(normalize=normalized),
                 )[1, 0]
-            # elif(metric == "kernel_random_walk"):
-            #    res.at[i,j] = kernel_graph([graphs[numeric_i], graphs[numeric_j]], "random_walk")[1,0]
             elif metric == "kernel_weisfeiler_lehman":
-                res.at[i, j] = kernel_graph(
+                res.at[i, j] = graph_kernel(
                     [graphs[numeric_i], graphs[numeric_j]],
-                    "weisfeiler_lehman",
-                    normalize=normalized,
+                    WeisfeilerLehman(normalize=normalized),
                 )[1, 0]
     if out:
         res.to_csv(out.replace(".png", ".csv"))

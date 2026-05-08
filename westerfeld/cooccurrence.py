@@ -3,6 +3,7 @@ import math
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from grakel import ShortestPath, WeisfeilerLehman
 from scipy.stats import gmean
 
 from _preparation import common_preparation, rarify
@@ -18,10 +19,8 @@ from graph.utils import calc_iou
 from graph.utils import read_data
 from graph.utils import preprocessing
 from graph.utils import create_figure
-from graph.comparison.utils import (
-    compare_graphs_pairwise_on,
-    full_multiple_graphs_evaluation,
-)
+from graph.comparison.kernels import graph_kernel
+from graph.comparison.utils import full_multiple_graphs_evaluation
 
 
 def example_single_graph():
@@ -225,8 +224,31 @@ def main():
 
     nodes_gi = list(graph_1.nodes)
     nodes_gj = list(graph_2.nodes)
+    edges_gi = ["|".join(sorted(edge)) for edge in list(graph_1.edges)]
+    edges_gj = ["|".join(sorted(edge)) for edge in list(graph_2.edges)]
+
     print(calc_iou(nodes_gi, nodes_gj))
-    print(calc_iou(nodes_gj, nodes_gi))
+    print(calc_iou(edges_gi, edges_gj))
+
+    # This is expensive
+    # distance = -1
+    # for edits in nx.optimal_edit_paths(graph_1, graph_2):
+    #     print(edits)
+    #     distance = edits
+    #     # TODO: Why should it always be the last element?
+    # print(distance)
+
+    k = graph_kernel(
+        [graph_1, graph_2],
+        ShortestPath(normalize=True),
+    )  # [1, 0]
+    print(k)
+
+    k = graph_kernel(
+        [graph_1, graph_2],
+        WeisfeilerLehman(normalize=True),
+    )  # [1, 0]
+    print(k)
 
 
 if __name__ == "__main__":
