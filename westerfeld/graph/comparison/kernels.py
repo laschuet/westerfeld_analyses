@@ -31,7 +31,7 @@ def to_grakel_graph(G_nx: nx.Graph, attribute=None):
 def kernel_graph(Gs_nx: list[nx.Graph], kernel: str = "", normalize=False):
     match kernel:
         case "shortest_path":
-            K = generic_kernel_on_graph(Gs_nx, ShortestPath(normalize))
+            K = generic_kernel_on_graph(Gs_nx, ShortestPath(normalize=normalize))
         case "random_walk":
             K = generic_kernel_on_graph(Gs_nx, RandomWalk(normalize=normalize))
         case "weisfeiler_lehman":
