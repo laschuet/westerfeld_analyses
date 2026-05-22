@@ -125,17 +125,9 @@ def ncm(
     )
 
 
-def plot_ncm(result, ax=None):
-    standalone = ax is None
-    if standalone:
-        _, ax = plt.subplots()
-
-    ax.set_title(
-        f"Neutral community model of {result.type_label} ({result.label})\n"
-        f"$R^2 = {result.rsquared:.4f}$"
-    )
-    ax.set_xlabel("log(Mean relative abundance)")
-    ax.set_ylabel("Occurrence frequency")
+def plot_ncm(result, ax):
+    """Draw a single NCM panel onto `ax` (figure-level framing is the caller's job)."""
+    ax.set_title(f"{result.label} ($R^2 = {result.rsquared:.4f}$)")
     ax.set_xscale("log")
     ax.set_ylim(0, 1)
 
@@ -156,12 +148,6 @@ def plot_ncm(result, ax=None):
     ax.scatter(x[below], y[below], color="#BACA08", s=1, label="below prediction")
     ax.scatter(x[above], y[above], color="#089453", s=1, label="above prediction")
     ax.scatter(x[neutral], y[neutral], color="#000000", s=1)
-    ax.legend()
-
-    if standalone:
-        fig = ax.get_figure()
-        fig.tight_layout()
-        fig.savefig(f"ncm_{result.label}.pdf")
 
     return ax
 
@@ -170,7 +156,15 @@ def plot_ncm_grid(results: list[NCMResult], path="ncm.pdf", ncols=2):
     n = len(results)
     ncols = min(ncols, n)
     nrows = math.ceil(n / ncols)
-    fig, axs = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows), squeeze=False)
+    fig, axs = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(6 * ncols, 5 * nrows),
+        squeeze=False,
+        sharex=True,
+        sharey=True,
+        layout="constrained",
+    )
     axs = axs.reshape(-1)
 
     for ax, result in zip(axs, results):
@@ -178,7 +172,17 @@ def plot_ncm_grid(results: list[NCMResult], path="ncm.pdf", ncols=2):
     for ax in axs[n:]:
         ax.set_visible(False)
 
-    fig.tight_layout()
+    type_labels = {result.type_label for result in results}
+    title = "Neutral community model"
+    if len(type_labels) == 1:
+        title += f" of {next(iter(type_labels))}"
+    fig.suptitle(title)
+    fig.supxlabel("log(Mean relative abundance)")
+    fig.supylabel("Occurrence frequency")
+
+    handles, labels = axs[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="outside upper right", markerscale=5)
+
     fig.savefig(path)
     return fig
 
