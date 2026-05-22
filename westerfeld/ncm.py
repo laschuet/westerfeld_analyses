@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from lmfit import Parameters, Model
 
 from _preparation import relative_abundances
+from _utils import calc_iou
 
 
 @dataclass
@@ -210,6 +211,44 @@ def export_taxa_bounds(result: NCMResult, path="taxa_bounds.xlsx"):
     print("DONE")
 
 
+def compare_ncm_results(results: list[NCMResult]) -> pd.DataFrame:
+    """One row per result with the fit parameters and partition sizes."""
+    rows = []
+    for result in results:
+        below, above, neutral = taxa_bounds(result)
+        n_taxa = len(result.taxa)
+        rows.append(
+            {
+                "m": result.m,
+                "Nm": result.Nm,
+                "R^2": result.rsquared,
+                "Below": len(below),
+                "Above": len(above),
+                "Neutral": len(neutral),
+                "Neutral fraction": len(neutral) / n_taxa if n_taxa else float("nan"),
+            }
+        )
+    return pd.DataFrame(rows, index=[result.label for result in results])
+
+
+def compare_ncm_partitions(
+    results: list[NCMResult], partition: str = "above"
+) -> pd.DataFrame:
+    """Pairwise IoU (Jaccard) of one partition's taxa across results."""
+    index = {"below": 0, "above": 1, "neutral": 2}[partition]
+    labels = [result.label for result in results]
+    taxa_sets = [list(taxa_bounds(result)[index]) for result in results]
+
+    matrix = pd.DataFrame(index=labels, columns=labels, dtype=float)
+    for i, taxa_i in enumerate(taxa_sets):
+        for j, taxa_j in enumerate(taxa_sets):
+            if not taxa_i and not taxa_j:
+                matrix.iloc[i, j] = 1.0
+            else:
+                matrix.iloc[i, j] = calc_iou(taxa_i, taxa_j)
+    return matrix
+
+
 def main():
     print("---------------------------")
     print("| NEUTRAL COMMUNITY MODEL |")
@@ -232,6 +271,15 @@ def main():
         results.append(result)
 
     plot_ncm_grid(results, path="ncm.pdf")
+
+    summary = compare_ncm_results(results)
+    print(summary)
+    summary.to_csv("ncm_summary.csv")
+
+    for partition in ("above", "below"):
+        overlap = compare_ncm_partitions(results, partition)
+        print(overlap)
+        overlap.to_csv(f"ncm_overlap_{partition}.csv")
 
 
 if __name__ == "__main__":
