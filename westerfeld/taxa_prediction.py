@@ -10,7 +10,6 @@ from _preparation import relative_abundances
 
 def taxa_prediction(
     type_label,
-    file_name,
     years=None,
     habitats=None,
     beneficials=None,
@@ -19,8 +18,7 @@ def taxa_prediction(
 ):
     _, df, _, _ = relative_abundances(type_label, years, habitats, beneficials, crops)
 
-    print("Learning models for every species as a target...")
-    results = []
+    print("Learning a model for every taxon as a target...")
     targets = df.columns
     if runs is None:
         runs = len(targets)
@@ -29,62 +27,54 @@ def taxa_prediction(
     rng = np.random.default_rng(42)
     sampled_targets = rng.choice(targets, size=runs, replace=False)
 
-    print(" " * 7 + "#" + "  Taxa")
+    print(" " * 7 + "#" + "  Taxon")
     print("-" * 8 + "  " + "-" * 32)
+    results = []
     for run, target in enumerate(sampled_targets):
         print(f"{run + 1:>8}  {target}")
 
         X = df.drop(columns=[target])
-        y = df[target].values
+        y = df[target].to_numpy()
 
         kfold = KFold(n_splits=10, shuffle=True, random_state=42)
         y_train_trues = []
         y_test_trues = []
         y_train_preds = []
         y_test_preds = []
-        for i, (train_index, test_index) in enumerate(kfold.split(X)):
-            X_train = X.iloc[train_index, :]
-            X_test = X.iloc[test_index, :]
+        for train_index, test_index in kfold.split(X):
+            X_train = X.iloc[train_index]
+            X_test = X.iloc[test_index]
             y_train_true = y[train_index]
             y_test_true = y[test_index]
 
             rf = RandomForestRegressor(random_state=42, n_jobs=-1)
             rf.fit(X_train, y_train_true)
 
-            y_train_pred = rf.predict(X_train)
-            y_test_pred = rf.predict(X_test)
-
             y_train_trues.extend(y_train_true)
             y_test_trues.extend(y_test_true)
-            y_train_preds.extend(y_train_pred)
-            y_test_preds.extend(y_test_pred)
+            y_train_preds.extend(rf.predict(X_train))
+            y_test_preds.extend(rf.predict(X_test))
 
-        r2_train = r2_score(y_train_trues, y_train_preds)
-        r2_test = r2_score(y_test_trues, y_test_preds)
         results.append(
             {
-                "species": target,
-                "r2_train": r2_train,
-                "r2_test": r2_test,
+                "taxon": target,
+                "r2_train": r2_score(y_train_trues, y_train_preds),
+                "r2_test": r2_score(y_test_trues, y_test_preds),
             }
         )
-        # print("Models' average R² across all folds:")
-        # print(f"R² train = {r2_train:.4f}")
-        # print(f"R² test = {r2_test:.4f}")
     print("DONE")
 
-    print("Writing results...", end="")
-    results = pd.DataFrame(results)
-    print("\nOverall R² across all species:")
-    train_mean = np.mean(results[["r2_train"]].values)
-    train_std = np.std(results[["r2_train"]].values)
-    test_mean = np.mean(results[["r2_test"]].values)
-    test_std = np.std(results[["r2_test"]].values)
-    with open(f"taxa_prediction_{file_name}.txt", "w") as file:
-        file.write(f"train: mean={train_mean:.4f} (sigma={train_std:.4f})\n")
-        file.write(f"test:  mean={test_mean:.4f} (sigma={test_std:.4f})\n")
-    results.to_csv(f"{file_name}.csv", index=False)
-    print("DONE")
+    return pd.DataFrame(results)
+
+
+def summarize_taxa_prediction(results):
+    return pd.DataFrame(
+        {
+            "mean": [results["r2_train"].mean(), results["r2_test"].mean()],
+            "std": [results["r2_train"].std(ddof=0), results["r2_test"].std(ddof=0)],
+        },
+        index=["r2_train", "r2_test"],
+    )
 
 
 def main():
@@ -92,14 +82,19 @@ def main():
     print("| TAXA PREDICTION |")
     print("-------------------")
 
-    taxa_prediction(
+    results = taxa_prediction(
         "Fungi",
-        "taxa_prediction--fungi--2019--field_soil--control",
         years=2019,
         habitats="Field_Soil",
         beneficials="Control",
         runs=16,
     )
+
+    summary = summarize_taxa_prediction(results)
+    print(summary)
+
+    results.to_csv("taxa_prediction.csv", index=False)
+    summary.to_csv("taxa_prediction_summary.csv")
 
 
 if __name__ == "__main__":
