@@ -1,11 +1,21 @@
 import numpy as np
 import pandas as pd
 
+from dataclasses import dataclass
+
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import r2_score, roc_auc_score
 from sklearn.model_selection import KFold
 
 from _preparation import relative_abundances, filter_prevalence, mclr
+
+
+@dataclass
+class TaxaPredictionResult:
+    regression: pd.DataFrame
+    classification: pd.DataFrame
+    regression_importances: pd.DataFrame
+    classification_importances: pd.DataFrame
 
 
 def positive_class_proba(classifier, X):
@@ -33,6 +43,7 @@ def _sample_targets(targets, runs, rng):
 def predict_abundance(features, runs, rng):
     """Predict each prevalent taxon's (mCLR) abundance from the other taxa."""
     results = []
+    importances = pd.DataFrame(index=features.columns)
     for run, target in enumerate(_sample_targets(features.columns, runs, rng)):
         print(f"{run + 1:>8}  {target}")
 
@@ -41,6 +52,7 @@ def predict_abundance(features, runs, rng):
 
         kfold = KFold(n_splits=10, shuffle=True, random_state=42)
         train_trues, train_preds, test_trues, test_preds = [], [], [], []
+        fold_importances = np.zeros(X.shape[1])
         for train_index, test_index in kfold.split(X):
             rf = RandomForestRegressor(random_state=42, n_jobs=-1)
             rf.fit(X.iloc[train_index], y[train_index])
@@ -48,7 +60,11 @@ def predict_abundance(features, runs, rng):
             train_preds.extend(rf.predict(X.iloc[train_index]))
             test_trues.extend(y[test_index])
             test_preds.extend(rf.predict(X.iloc[test_index]))
+            fold_importances += rf.feature_importances_
 
+        importances[target] = pd.Series(
+            fold_importances / kfold.get_n_splits(), index=X.columns
+        )
         results.append(
             {
                 "taxon": target,
@@ -56,12 +72,13 @@ def predict_abundance(features, runs, rng):
                 "r2_test": r2_score(test_trues, test_preds),
             }
         )
-    return pd.DataFrame(results)
+    return pd.DataFrame(results), importances
 
 
 def predict_presence(features, presence, targets, runs, rng):
     """Predict each band taxon's presence/absence from the prevalent taxa."""
     results = []
+    importances = pd.DataFrame(index=features.columns)
     for run, target in enumerate(_sample_targets(targets, runs, rng)):
         print(f"{run + 1:>8}  {target}")
 
@@ -70,19 +87,24 @@ def predict_presence(features, presence, targets, runs, rng):
 
         kfold = KFold(n_splits=10, shuffle=True, random_state=42)
         test_trues, test_scores = [], []
+        fold_importances = np.zeros(X.shape[1])
         for train_index, test_index in kfold.split(X):
             clf = RandomForestClassifier(random_state=42, n_jobs=-1)
             clf.fit(X.iloc[train_index], y[train_index])
             test_trues.extend(y[test_index])
             test_scores.extend(positive_class_proba(clf, X.iloc[test_index]))
+            fold_importances += clf.feature_importances_
 
+        importances[target] = pd.Series(
+            fold_importances / kfold.get_n_splits(), index=X.columns
+        )
         results.append(
             {
                 "taxon": target,
                 "auc_test": auc_or_nan(test_trues, test_scores),
             }
         )
-    return pd.DataFrame(results)
+    return pd.DataFrame(results), importances
 
 
 def taxa_prediction(
@@ -105,16 +127,23 @@ def taxa_prediction(
     rng = np.random.default_rng(42)
 
     print("Predicting abundance for every prevalent taxon...")
-    regression = predict_abundance(features, runs, rng)
+    regression, regression_importances = predict_abundance(features, runs, rng)
     print("DONE")
 
     low, high = presence_band
     band_taxa = prevalence[(prevalence >= low) & (prevalence <= high)].index
     print(f"Predicting presence for band taxa ({low}-{high}); {len(band_taxa)} taxa...")
-    classification = predict_presence(features, presence, band_taxa, runs, rng)
+    classification, classification_importances = predict_presence(
+        features, presence, band_taxa, runs, rng
+    )
     print("DONE")
 
-    return regression, classification
+    return TaxaPredictionResult(
+        regression=regression,
+        classification=classification,
+        regression_importances=regression_importances,
+        classification_importances=classification_importances,
+    )
 
 
 def summarize_taxa_prediction(results):
@@ -147,12 +176,26 @@ def predictability_summary(results, metric, threshold):
     )
 
 
+def dominating_taxa(importances, results, metric, threshold):
+    """Rank taxa by mean importance across the models that generalize."""
+    passing = results.loc[results[metric] > threshold, "taxon"].tolist()
+    subset = importances[passing]
+    ranking = pd.DataFrame(
+        {
+            "mean_importance": subset.mean(axis=1),
+            "n_models": subset.notna().sum(axis=1).astype(int),
+        }
+    )
+    ranking.index.name = "taxon"
+    return ranking.sort_values("mean_importance", ascending=False)
+
+
 def main():
     print("-------------------")
     print("| TAXA PREDICTION |")
     print("-------------------")
 
-    regression, classification = taxa_prediction(
+    result = taxa_prediction(
         "Fungi",
         years=2019,
         habitats="Field_Soil",
@@ -160,18 +203,29 @@ def main():
         runs=64,
     )
 
-    regression_summary = summarize_taxa_prediction(regression)
-    classification_summary = summarize_taxa_prediction(classification)
+    regression_summary = summarize_taxa_prediction(result.regression)
+    classification_summary = summarize_taxa_prediction(result.classification)
     print(regression_summary)
     print(classification_summary)
 
-    print(predictability_summary(regression, "r2_test", 0.5))
-    print(predictability_summary(classification, "auc_test", 0.7))
+    print(predictability_summary(result.regression, "r2_test", 0.5))
+    print(predictability_summary(result.classification, "auc_test", 0.7))
 
-    regression.to_csv("taxa_prediction_abundance.csv", index=False)
-    classification.to_csv("taxa_prediction_presence.csv", index=False)
+    abundance_dominating = dominating_taxa(
+        result.regression_importances, result.regression, "r2_test", 0.5
+    )
+    presence_dominating = dominating_taxa(
+        result.classification_importances, result.classification, "auc_test", 0.7
+    )
+    print(abundance_dominating.head(15))
+    print(presence_dominating.head(15))
+
+    result.regression.to_csv("taxa_prediction_abundance.csv", index=False)
+    result.classification.to_csv("taxa_prediction_presence.csv", index=False)
     regression_summary.to_csv("taxa_prediction_abundance_summary.csv")
     classification_summary.to_csv("taxa_prediction_presence_summary.csv")
+    abundance_dominating.to_csv("taxa_prediction_abundance_importance.csv")
+    presence_dominating.to_csv("taxa_prediction_presence_importance.csv")
 
 
 if __name__ == "__main__":
