@@ -4,11 +4,11 @@ from grakel import ShortestPath, WeisfeilerLehman
 from scipy.stats import gmean
 
 from _preparation import relative_abundances
-
-from graph.settings import USE_MCLR, MCLR_C
-from graph.creation.registry import get_graph_creator
 from _utils import calc_iou
+
 from graph.comparison.kernels import graph_kernel
+from graph.creation.registry import get_graph_creator
+from graph.settings import USE_MCLR, MCLR_C
 
 
 def cooccurrence(

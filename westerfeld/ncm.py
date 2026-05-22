@@ -56,9 +56,7 @@ def wilson_confidence_interval(p, n, alpha=0.05):
     return center - half_width, center + half_width
 
 
-def ncm(
-    type_label, label, years=None, habitats=None, beneficials=None, crops=None
-) -> NCMResult:
+def ncm(type_label, label, years=None, habitats=None, beneficials=None, crops=None):
     _, df_rel_taxa_abundances, community_size, _ = relative_abundances(
         type_label, years, habitats, beneficials, crops
     )
@@ -153,7 +151,7 @@ def plot_ncm(result, ax):
     return ax
 
 
-def plot_ncm_grid(results: list[NCMResult], path="ncm.pdf", ncols=2):
+def plot_ncm_grid(results, path="ncm.pdf", ncols=2):
     n = len(results)
     ncols = min(ncols, n)
     nrows = math.ceil(n / ncols)
@@ -188,7 +186,7 @@ def plot_ncm_grid(results: list[NCMResult], path="ncm.pdf", ncols=2):
     return fig
 
 
-def taxa_bounds(result: NCMResult):
+def taxa_bounds(result):
     y = result.y
     below = y < result.low_bound
     above = y > result.high_bound
@@ -196,7 +194,7 @@ def taxa_bounds(result: NCMResult):
     return result.taxa[below], result.taxa[above], result.taxa[neutral]
 
 
-def export_taxa_bounds(result: NCMResult, path="taxa_bounds.xlsx"):
+def export_taxa_bounds(result, path="taxa_bounds.xlsx"):
     print("Analyze taxa...", end="")
     taxa_low, taxa_high, taxa_neutral = taxa_bounds(result)
 
@@ -211,7 +209,7 @@ def export_taxa_bounds(result: NCMResult, path="taxa_bounds.xlsx"):
     print("DONE")
 
 
-def compare_ncm_results(results: list[NCMResult]) -> pd.DataFrame:
+def compare_ncm_results(results):
     """One row per result with the fit parameters and partition sizes."""
     rows = []
     for result in results:
@@ -231,9 +229,7 @@ def compare_ncm_results(results: list[NCMResult]) -> pd.DataFrame:
     return pd.DataFrame(rows, index=[result.label for result in results])
 
 
-def compare_ncm_partitions(
-    results: list[NCMResult], partition: str = "above"
-) -> pd.DataFrame:
+def compare_ncm_partitions(results, partition="above"):
     """Pairwise IoU (Jaccard) of one partition's taxa across results."""
     index = {"below": 0, "above": 1, "neutral": 2}[partition]
     labels = [result.label for result in results]
