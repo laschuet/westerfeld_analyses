@@ -2,12 +2,8 @@ import numpy as np
 import pandas as pd
 
 from _utils import (
-    create_label,
     EXPERIMENT_COLUMNS,
-    merge_and_unpivot,
     pivot,
-    split,
-    postprocess_label,
     resolve_filter,
     taxonomy_level,
 )
@@ -260,38 +256,6 @@ def replicate(row):
         return mapping_rest[row["Block"]]
 
 
-def categorize_taxa(row):
-    """
-    1) Always abundant taxa (AAT) were defined as taxa with abundance ≥ 1% in all samples
-    2) Always rare taxa (ART) were defined as the OTUs with abundance < 0.01% in all samples
-    3) Moderate taxa (MT) were defined as OTUs with abundance between 0.01 and 1% in all samples
-    4) Conditionally rare taxa (CRT) were defined as with abundance below 1% in all samples and < 0.01% in some samples
-    5) Conditionally abundant taxa (CAT) were defined as taxa with abundance ≥ 0.01% in all samples and ≥ 1% in some samples but never rare (< 0.01%)
-    6) Conditionally rare and abundant taxa (CRAT) were defined as OTUs with abundance varying from rare (< 0.01%) to abundant (≥ 1%).
-    Source: https://doi.org/10.1186/s40168-019-0749-8 ("Stochastic processes shape microeukaryotic community assembly in a subtropical river across wet and dry seasons")
-    """
-    RARE = 0.0001
-    ABUNDANT = 0.01
-
-    min_value = row.min()
-    max_value = row.max()
-
-    if min_value >= ABUNDANT:
-        return "AAT"
-    if max_value < RARE:
-        return "ART"
-    if min_value >= RARE and max_value < ABUNDANT:
-        return "MT"
-    if max_value < ABUNDANT and min_value < RARE:
-        return "CRT"
-    if min_value >= RARE and max_value >= ABUNDANT:
-        return "CAT"
-    if min_value < RARE and max_value >= ABUNDANT:
-        return "CRAT"
-
-    return "?"
-
-
 def precrop(row):
     if row["Crop"] == "Winter wheat 1":
         return "Grain maize"
@@ -343,79 +307,6 @@ def rarify(df, sample_total=0):
         df.iloc[i] = new_counts
 
     return df
-
-
-def reorder_columns(df, type_label, sort_order=None):
-    print("Change order of the columns...", end="")
-    if sort_order is None:
-        sort_order = [
-            "Experimental_Year",
-            "Date",
-            "Crop",
-            "Precrop",
-            "Replicate",
-            "Tillage",
-            "Fertilization",
-            "Treatment",
-            "Habitat",
-            "Beneficial",
-            "Value_abs",
-            "Value_rel",
-            "Kingdom",
-            "Phylum",
-            "Class",
-            "Order",
-            "Family",
-            "Genus",
-        ]
-        if type_label == "Fungi":
-            sort_order.append("Species")
-        sort_order.append("Category")
-    return df[sort_order]
-
-
-# def funguild(df):
-#     print("Export data to Excel and CSV...", end="")
-#     df.loc[:, "Taxon"] = df["Genus"].str.replace("_gen", "", regex=False)
-#     df_funguild = pd.read_excel("../funguild.xlsx")
-#
-#     df_funguild_unqique = df_funguild[
-#         [
-#             "Taxon",
-#             "Trophic Mode",
-#             "Guild",
-#             "Confidence Ranking",
-#             "Growth Morphology",
-#             "Trait",
-#         ]
-#     ].drop_duplicates()
-#     df_funguild_unqique = df_funguild_unqique.rename(
-#         columns={
-#             "Trophic Mode": "Trophic_Mode",
-#             "Confidence Ranking": "Confidence_Ranking",
-#             "Growth Morphology": "Growth_Morphology",
-#         }
-#     )
-#
-#     df_fungi_addon = pd.merge(
-#         df, df_funguild_unqique, on="Taxon", how="left"
-#     )
-#     df_fungi_addon = df_fungi_addon.drop(columns=["Taxon"])
-#     df_fungi_addon.to_excel("../df_fungi.xlsx", sheet_name="Population", index=False)
-#     df_fungi_addon.to_csv("../df_fungi.csv", index=False)
-#
-#     print("DONE")
-
-
-def export(df, type_label, years=None, habitats=None, beneficials=None, crops=None):
-    print("Export data to Excel and CSV...", end="")
-    year_label = create_label(years)
-    habitat_label = create_label(habitats)
-    beneficial_label = create_label(beneficials)
-    crop_label = create_label(crops)
-    file_name = f"../df_{postprocess_label(type_label)}_{year_label}_{habitat_label}_{beneficial_label}_{crop_label}"
-    df.to_excel(file_name + ".xlsx", sheet_name="Population", index=False)
-    df.to_csv(file_name + ".csv", index=False)
 
 
 def common_preparation(
@@ -504,17 +395,6 @@ def common_preparation(
     print("DONE")
 
     df.reset_index(inplace=True, drop=True)
-
-    return df
-
-    # def extra_preparation(df, type_label):
-    #     print("Categorize taxa...", end="")
-    #     df_tax = df_num.copy().T
-    #     df_tax = df_tax.rename_axis(agg_column)
-    #     df_tax["Category"] = df_tax.apply(categorize_taxa, axis=1)
-    #     df_tax = df_tax.reset_index()[[agg_column, "Category"]]
-    #     df = df.merge(df_tax, on=agg_column, how="left")
-    #     print("DONE")
 
     return df
 
