@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import random
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
@@ -25,14 +24,15 @@ def taxa_prediction(
     targets = df.columns
     if runs is None:
         runs = len(targets)
+    runs = min(runs, len(targets))
+
+    rng = np.random.default_rng(42)
+    sampled_targets = rng.choice(targets, size=runs, replace=False)
+
     print(" " * 7 + "#" + "  Taxa")
     print("-" * 8 + "  " + "-" * 32)
-    for run, target in enumerate(random.sample(list(targets), runs)):
+    for run, target in enumerate(sampled_targets):
         print(f"{run + 1:>8}  {target}")
-
-        # Stop early, for testing purposes only
-        if run == 10:
-            break
 
         X = df.drop(columns=[target])
         y = df[target].values
