@@ -127,12 +127,6 @@ def preprocessing(
     return df, df_lookup, df_relative
 
 
-def calc_iou(d1, d2):
-    union = set(d1 + d2)
-    intersect = np.intersect1d(d1, d2)
-    return len(intersect) / len(union)
-
-
 def identifiy_generalists_or_specialists(
     Pj: np.ndarray,
 ) -> Tuple[Optional[Literal["Specialist", "Generalist"]], np.ndarray, np.ndarray]:

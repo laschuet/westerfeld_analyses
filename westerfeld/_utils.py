@@ -51,3 +51,9 @@ def taxonomy_level(type_label):
         return "Species"
     else:
         return "Genus"
+
+
+def calc_iou(d1, d2):
+    union = set(d1 + d2)
+    intersect = np.intersect1d(d1, d2)
+    return len(intersect) / len(union)

@@ -11,7 +11,8 @@ from scipy.stats import entropy
 
 from graph.creation.registry import get_graph_creator
 from graph.comparison.kernels import graph_kernel
-from graph.utils import calc_iou, preprocessing, visualize_graphs, create_figure_simple
+from _utils import calc_iou
+from graph.utils import preprocessing, visualize_graphs, create_figure_simple
 
 
 def are_graphs_essentially_the_same(g1: nx.Graph, g2: nx.Graph):
