@@ -64,36 +64,23 @@ class CorrelationGraphCreationMethod(GraphCreationMethod):
                     )
 
         nodes_attr = dict(G.nodes)
-        nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "spec_or_gen", "bj"})
         if df_lookup is not None and df_relative is not None:
+            nodes_bjs = pd.DataFrame(
+                columns=["mean_average_relative_abudances", "spec_or_gen", "bj"]
+            )
             for node in G.nodes:
                 attributes = df_lookup.loc[node]
                 spec_or_gen, mean_average_relative_abudances, bj = (
                     identifiy_generalists_or_specialists(df_relative[node].to_numpy())
                 )
-                attributes.loc["generalist_or_specialists"] = (
-                    spec_or_gen if spec_or_gen is not None else "None"
-                )
+                spec_or_gen = spec_or_gen if spec_or_gen is not None else "None"
+                attributes.loc["generalist_or_specialists"] = spec_or_gen
                 nodes_attr[node] = attributes
-                nodes_bjs = pd.DataFrame(
-                    columns=["mean_average_relative_abudances", "spec_or_gen", "bj"]
-                )
-                for node in G.nodes:
-                    attributes = df_lookup.loc[node]
-                    specOrGen, mean_average_relative_abudances, bj = (
-                        identifiy_generalists_or_specialists(
-                            df_relative[node].to_numpy()
-                        )
-                    )
-                    attributes.loc["generalist_or_specialists"] = (
-                        specOrGen if specOrGen is not None else "None"
-                    )
-                    nodes_attr[node] = attributes
-                    nodes_bjs.loc[node] = [
-                        mean_average_relative_abudances,
-                        specOrGen if specOrGen is not None else "None",
-                        bj,
-                    ]
+                nodes_bjs.loc[node] = [
+                    mean_average_relative_abudances,
+                    spec_or_gen,
+                    bj,
+                ]
             nodes_bjs.plot(
                 kind="scatter", x="mean_average_relative_abudances", logx=True, y="bj"
             )

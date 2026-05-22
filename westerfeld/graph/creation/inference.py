@@ -59,36 +59,16 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
                     )
 
         nodes_attr = dict(G.nodes)
-        nodes_bjs = pd.DataFrame({"mean_average_relative_abudances", "spec_or_gen", "bj"})
         if df_lookup is not None and df_relative is not None:
             for node in G.nodes:
                 attributes = df_lookup.loc[node]
-                spec_or_gen, mean_average_relative_abudances, bj = (
-                    identifiy_generalists_or_specialists(df_relative[node].to_numpy())
+                spec_or_gen, _, _ = identifiy_generalists_or_specialists(
+                    df_relative[node].to_numpy()
                 )
                 attributes.loc["generalist_or_specialists"] = (
                     spec_or_gen if spec_or_gen is not None else "None"
                 )
                 nodes_attr[node] = attributes
-                nodes_bjs = pd.DataFrame(
-                    columns=["mean_average_relative_abudances", "spec_or_gen", "bj"]
-                )
-                for node in G.nodes:
-                    attributes = df_lookup.loc[node]
-                    specOrGen, mean_average_relative_abudances, bj = (
-                        identifiy_generalists_or_specialists(
-                            df_relative[node].to_numpy()
-                        )
-                    )
-                    attributes.loc["generalist_or_specialists"] = (
-                        specOrGen if specOrGen is not None else "None"
-                    )
-                    nodes_attr[node] = attributes
-                    nodes_bjs.loc[node] = [
-                        mean_average_relative_abudances,
-                        specOrGen if specOrGen is not None else "None",
-                        bj,
-                    ]
 
         nx.set_node_attributes(G, nodes_attr)
         return G
