@@ -1,9 +1,6 @@
-import math
-
 from grakel import ShortestPath, WeisfeilerLehman
-from scipy.stats import gmean
 
-from _preparation import relative_abundances
+from _preparation import relative_abundances, mclr
 from _utils import calc_iou
 
 from graph.comparison.kernels import graph_kernel
@@ -19,17 +16,7 @@ def cooccurrence(
     )
 
     if USE_MCLR:
-        # transform via mCLR
-        for index, row in df_rel_taxa_abundances.iterrows():
-            non_zero_elements = row[row > 0]
-            geometric_mean = gmean(non_zero_elements)
-            row = row.apply(lambda x: (math.log10(x / geometric_mean)) if x != 0 else 0)
-            min_result = row[row != 0].min()
-            epsilon = abs(min_result) + MCLR_C
-            row = row.apply(
-                lambda x: (x + epsilon) if x != 0 else 0,
-            )
-            df_rel_taxa_abundances.loc[index] = row
+        df_rel_taxa_abundances = mclr(df_rel_taxa_abundances, c=MCLR_C)
 
     graph_creator = get_graph_creator()
     return graph_creator.create_network(df_rel_taxa_abundances)

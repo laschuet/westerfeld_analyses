@@ -1,5 +1,9 @@
+import math
+
 import numpy as np
 import pandas as pd
+
+from scipy.stats import gmean
 
 from _utils import (
     EXPERIMENT_COLUMNS,
@@ -443,3 +447,27 @@ def relative_abundances(
     print("DONE")
 
     return df, df_rel_taxa_abundances, community_size, columns_grouper
+
+
+def filter_prevalence(df, min_prevalence):
+    """Keep taxa (columns) present in at least min_prevalence of the samples."""
+    prevalence = (df > 0).mean(axis=0)
+    return df.loc[:, prevalence >= min_prevalence]
+
+
+def mclr(df, c=1):
+    """
+    Modified centered log-ratio transform (rows = samples, columns = taxa).
+
+    Zeros stay zero; the non-zero log-ratios are shifted to be strictly positive
+    so they remain distinct from the (structural) zeros.
+    """
+    transformed = df.copy()
+    for index, row in df.iterrows():
+        non_zero_elements = row[row > 0]
+        geometric_mean = gmean(non_zero_elements)
+        row = row.apply(lambda x: math.log10(x / geometric_mean) if x != 0 else 0)
+        epsilon = abs(row[row != 0].min()) + c
+        row = row.apply(lambda x: (x + epsilon) if x != 0 else 0)
+        transformed.loc[index] = row
+    return transformed

@@ -5,7 +5,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
 from sklearn.model_selection import KFold
 
-from _preparation import relative_abundances
+from _preparation import relative_abundances, filter_prevalence, mclr
 
 
 def taxa_prediction(
@@ -15,8 +15,13 @@ def taxa_prediction(
     beneficials=None,
     crops=None,
     runs=None,
+    min_prevalence=0.7,
 ):
     _, df, _, _ = relative_abundances(type_label, years, habitats, beneficials, crops)
+
+    df = filter_prevalence(df, min_prevalence)
+    df = mclr(df)
+    print(f"Samples: {df.shape[0]}, prevalent taxa: {df.shape[1]}")
 
     print("Learning a model for every taxon as a target...")
     targets = df.columns
@@ -87,7 +92,7 @@ def main():
         years=2019,
         habitats="Field_Soil",
         beneficials="Control",
-        runs=16,
+        runs=64,
     )
 
     summary = summarize_taxa_prediction(results)

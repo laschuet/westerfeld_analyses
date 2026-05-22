@@ -1,5 +1,4 @@
 import logging
-import math
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -11,8 +10,8 @@ from pathlib import Path
 from typing import Literal, Optional, Tuple
 
 from matplotlib.lines import Line2D
-from scipy.stats import gmean
 
+from _preparation import mclr
 from graph.settings import (
     ABSOLUTE_THRESHOLD,
     B_VALUE_GENERALIST_THRESHOLD,
@@ -112,17 +111,7 @@ def preprocessing(
         df = df_relative.copy(deep=True)
 
     if USE_MCLR:
-        # Transform via mCLR
-        for index, row in df.iterrows():
-            non_zero_elements = row[row > 0]
-            geometric_mean = gmean(non_zero_elements)
-            row = row.apply(lambda x: (math.log10(x / geometric_mean)) if x != 0 else 0)
-            min_result = row[row != 0].min()
-            epsilon = abs(min_result) + MCLR_C
-            row = row.apply(
-                lambda x: (x + epsilon) if x != 0 else 0,
-            )
-            df.loc[index] = row
+        df = mclr(df, c=MCLR_C)
 
     return df, df_lookup, df_relative
 
