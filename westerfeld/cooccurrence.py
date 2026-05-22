@@ -1,8 +1,5 @@
 import math
 
-import matplotlib.pyplot as plt
-import pandas as pd
-
 from grakel import ShortestPath, WeisfeilerLehman
 from scipy.stats import gmean
 
@@ -13,142 +10,10 @@ from _utils import (
     taxonomy_level,
 )
 
-from graph.settings import INPUT_FILE, LOOKUP_FILE, USE_MCLR, MCLR_C
+from graph.settings import USE_MCLR, MCLR_C
 from graph.creation.registry import get_graph_creator
 from graph.utils import calc_iou
-from graph.utils import read_data
-from graph.utils import preprocessing
-from graph.utils import create_figure
 from graph.comparison.kernels import graph_kernel
-from graph.comparison.utils import full_multiple_graphs_evaluation
-
-
-def example_single_graph():
-    preprossed_data, lookup_data, relative_data = preprocessing(INPUT_FILE, LOOKUP_FILE)
-    graph_creator = get_graph_creator()
-    graph = graph_creator.create_network(preprossed_data, lookup_data, relative_data)
-    create_figure(graph)
-    plt.savefig("out.svg")
-
-
-def example_treatment_seperation():
-    raw_data, lookup_data = read_data(INPUT_FILE, LOOKUP_FILE)
-
-    # Seperate original data by 'Treatment'
-    treatments = raw_data["Treatment"].unique()
-    phylums = raw_data["Phylum"].unique()
-    seperated_samples = [
-        raw_data[raw_data["Treatment"] == treatment] for treatment in treatments
-    ]
-
-    # Add split column
-    for samples in seperated_samples:
-        samples["Crop_Treatment_Replicate"] = (
-            "Crop_"
-            + samples["Crop"]
-            + "_Treatment"
-            + samples["Treatment"]
-            + "_Replicate"
-            + samples["Replicate"]
-        )
-    transformed_data = [
-        samples.pivot_table(
-            index="Species",
-            columns="Crop_Treatment_Replicate",
-            values="Value",
-            aggfunc="sum",
-        )
-        for samples in seperated_samples
-    ]
-
-    full_multiple_graphs_evaluation(
-        raw_data=raw_data,
-        transformed_data=transformed_data,
-        seperator=treatments,
-        phylums=phylums,
-        lookup_data=lookup_data,
-    )
-
-
-def example_replica_seperation():
-    raw_data, lookup_data = read_data(INPUT_FILE, LOOKUP_FILE)
-
-    # Seperate original data by 'Replicate' and on treatment at index 0
-    replicates = raw_data["Replicate"].unique()
-    phylums = raw_data["Phylum"].unique()
-    seperated_samples = [raw_data[(raw_data["Replicate"] == rep)] for rep in replicates]
-
-    # Add split column
-    for samples in seperated_samples:
-        samples["Crop_Treatment_Replicate"] = (
-            "Crop_"
-            + samples["Crop"]
-            + "_Treatment"
-            + samples["Treatment"]
-            + "_Replicate"
-            + samples["Replicate"]
-        )
-    transformed_data = [
-        samples.pivot_table(
-            index="Species",
-            columns="Crop_Treatment_Replicate",
-            values="Value",
-            aggfunc="sum",
-        )
-        for samples in seperated_samples
-    ]
-
-    full_multiple_graphs_evaluation(
-        raw_data=raw_data,
-        transformed_data=transformed_data,
-        seperator=replicates,
-        phylums=phylums,
-        lookup_data=lookup_data,
-    )
-
-
-def example_two_graphs():
-    raw_data_1_F, lookup_data = read_data("../df_Fungi_19_F_Co_.csv", LOOKUP_FILE)
-    raw_data_1_R, _ = read_data("../df_Fungi_19_R_Co_.csv", LOOKUP_FILE)
-    raw_data = pd.concat([raw_data_1_F, raw_data_1_R])
-
-    # Seperate original data by 'Habitat'
-    habitats = raw_data["Habitat"].unique()
-    phylums = raw_data["Phylum"].unique()
-    seperated_samples = [
-        raw_data[raw_data["Habitat"] == habitat] for habitat in habitats
-    ]
-
-    # Add split column
-    for samples in seperated_samples:
-        samples["Crop_Treatment_Replicate"] = (
-            "Crop_"
-            + samples["Crop"]
-            + "_Treatment"
-            + samples["Treatment"]
-            + "_Replicate"
-            + samples["Replicate"]
-        )
-    transformed_data = [
-        samples.pivot_table(
-            index="Species",
-            columns="Crop_Treatment_Replicate",
-            values="Value_abs",
-            aggfunc="sum",
-        )
-        for samples in seperated_samples
-    ]
-
-    transformed_data[0].to_csv("out/transformed_1.csv")
-    transformed_data[1].to_csv("out/transformed_2.csv")
-
-    full_multiple_graphs_evaluation(
-        raw_data=raw_data,
-        transformed_data=transformed_data,
-        seperator=habitats,
-        phylums=phylums,
-        lookup_data=lookup_data,
-    )
 
 
 def cooccurrence(
