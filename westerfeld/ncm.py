@@ -6,7 +6,6 @@ import scipy as sp
 from dataclasses import dataclass
 
 from lmfit import Parameters, Model
-from scipy.stats import bootstrap
 
 from _preparation import relative_abundances
 
@@ -39,6 +38,18 @@ def custom_beta_cdf(p, N, m):
     a = N * m * p
     b = N * m * (1.0 - p)
     return sp.stats.beta.cdf(1.0, a, b) - sp.stats.beta.cdf(1.0 / N, a, b)
+
+
+def wilson_confidence_interval(p, n, alpha=0.05):
+    """
+    Wilson confidence interval for a binomial proportion p observed over n
+    samples.
+    """
+    z = sp.stats.norm.ppf(1.0 - alpha / 2.0)
+    denominator = 1.0 + z**2 / n
+    center = (p + z**2 / (2.0 * n)) / denominator
+    half_width = (z / denominator) * np.sqrt(p * (1.0 - p) / n + z**2 / (4.0 * n**2))
+    return center - half_width, center + half_width
 
 
 def ncm(
@@ -87,18 +98,7 @@ def ncm(
     print("Computing confidence bounds...", end="")
     best_fit = ncm_result.best_fit
 
-    data = (best_fit,)
-    bootstrap_result = bootstrap(
-        data,
-        np.mean,
-        n_resamples=9999,
-        confidence_level=0.95,
-        random_state=1,
-        method="percentile",
-    )  # Doku angucken bzgl. Parametrisierung
-    low, high = bootstrap_result.confidence_interval
-    low_bound = best_fit - low
-    high_bound = best_fit + high
+    low_bound, high_bound = wilson_confidence_interval(best_fit, n_samples)
 
     uncertainty = ncm_result.eval_uncertainty(sigma=2)
     lower = best_fit - uncertainty
