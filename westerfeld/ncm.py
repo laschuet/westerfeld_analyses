@@ -20,18 +20,20 @@ def custom_beta_cdf(p, N, m):
 
 
 def ncm(type_label, file_name, years=None, habitats=None, beneficials=None, crops=None):
-    df, df_rel_taxa_abundances, community_size, columns_grouper = relative_abundances(
+    _, df_rel_taxa_abundances, community_size, _ = relative_abundances(
         type_label, years, habitats, beneficials, crops
     )
 
     print("Computing mean relative abundances and occurrence frequencies...", end="")
     n_samples, n_taxa = df_rel_taxa_abundances.shape
+    taxa = df_rel_taxa_abundances.columns.to_numpy()
     mean_rel_taxa_abundances = df_rel_taxa_abundances.mean().to_numpy()
     occurrence_frequencies = (
         np.count_nonzero(df_rel_taxa_abundances, axis=0) / n_samples
     )
 
     mask = (mean_rel_taxa_abundances > 0) & (occurrence_frequencies > 0)
+    taxa = taxa[mask]
     mean_rel_taxa_abundances = mean_rel_taxa_abundances[mask]
     occurrence_frequencies = occurrence_frequencies[mask]
     n_taxa = mask.sum()
@@ -126,7 +128,6 @@ def ncm(type_label, file_name, years=None, habitats=None, beneficials=None, crop
     print("DONE")
 
     print("Analyze taxa...", end="")
-    taxa = df[columns_grouper].sort_values().unique()
     taxa_sorted = taxa[sorted_indices]
     idx_low_bound = np.where(y < low_bound)[0]
     idx_high_bound = np.where(y > high_bound)[0]
