@@ -1,3 +1,5 @@
+import math
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,6 +15,7 @@ from _preparation import relative_abundances
 @dataclass
 class NCMResult:
     type_label: str
+    label: str
     x: np.ndarray
     y: np.ndarray
     taxa: np.ndarray
@@ -53,7 +56,7 @@ def wilson_confidence_interval(p, n, alpha=0.05):
 
 
 def ncm(
-    type_label, file_name, years=None, habitats=None, beneficials=None, crops=None
+    type_label, label, years=None, habitats=None, beneficials=None, crops=None
 ) -> NCMResult:
     _, df_rel_taxa_abundances, community_size, _ = relative_abundances(
         type_label, years, habitats, beneficials, crops
@@ -107,6 +110,7 @@ def ncm(
 
     return NCMResult(
         type_label=type_label,
+        label=label,
         x=x,
         y=y,
         taxa=taxa,
@@ -127,7 +131,8 @@ def plot_ncm(result, ax=None):
         _, ax = plt.subplots()
 
     ax.set_title(
-        f"Neutral community model of {result.type_label} ($R^2 = {result.rsquared:.4f}$)"
+        f"Neutral community model of {result.type_label} ({result.label})\n"
+        f"$R^2 = {result.rsquared:.4f}$"
     )
     ax.set_xlabel("log(Mean relative abundance)")
     ax.set_ylabel("Occurrence frequency")
@@ -156,9 +161,26 @@ def plot_ncm(result, ax=None):
     if standalone:
         fig = ax.get_figure()
         fig.tight_layout()
-        fig.savefig(f"ncm_{result.type_label}.pdf")
+        fig.savefig(f"ncm_{result.label}.pdf")
 
     return ax
+
+
+def plot_ncm_grid(results: list[NCMResult], path="ncm.pdf", ncols=2):
+    n = len(results)
+    ncols = min(ncols, n)
+    nrows = math.ceil(n / ncols)
+    fig, axs = plt.subplots(nrows, ncols, figsize=(6 * ncols, 5 * nrows), squeeze=False)
+    axs = axs.reshape(-1)
+
+    for ax, result in zip(axs, results):
+        plot_ncm(result, ax=ax)
+    for ax in axs[n:]:
+        ax.set_visible(False)
+
+    fig.tight_layout()
+    fig.savefig(path)
+    return fig
 
 
 def taxa_bounds(result: NCMResult):
@@ -189,16 +211,23 @@ def main():
     print("| NEUTRAL COMMUNITY MODEL |")
     print("---------------------------")
 
-    ncm_1 = ncm(
-        "Fungi",
-        "ncm--",
-        years=2019,
-        habitats="Field_Soil",
-        beneficials="Control",
-        crops=["Grain maize", "Winter wheat 1", "Winter wheat 2"],
-    )
-    plot_ncm(ncm_1)
-    export_taxa_bounds(ncm_1)
+    crops = ["Grain maize", "Winter wheat 1", "Winter wheat 2"]
+    habitats = ["Field_Soil", "Rhizosphere"]
+
+    results = []
+    for habitat in habitats:
+        result = ncm(
+            "Fungi",
+            habitat,
+            years=2019,
+            habitats=habitat,
+            beneficials="Control",
+            crops=crops,
+        )
+        export_taxa_bounds(result, path=f"taxa_bounds_{habitat}.xlsx")
+        results.append(result)
+
+    plot_ncm_grid(results, path="ncm.pdf")
 
 
 if __name__ == "__main__":
