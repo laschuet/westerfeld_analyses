@@ -517,3 +517,49 @@ def common_preparation(
     #     print("DONE")
 
     return df
+
+
+def relative_abundances(
+    type_label, years=None, habitats=None, beneficials=None, crops=None
+):
+    """
+    Run the common preparation and turn it into a rarefied relative-abundance
+    table (rows = samples, columns = taxa).
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        The fully prepared long-format table.
+    df_rel_taxa_abundances : pandas.DataFrame
+        Relative abundances per taxon.
+    community_size : int
+        Minimum total absolute abundance across samples (the rarefaction depth).
+    columns_grouper : str
+        The taxonomy column used as the taxa axis.
+    """
+    df = common_preparation(type_label, years, habitats, beneficials, crops)
+
+    index_grouper = EXPERIMENT_COLUMNS
+    columns_grouper = taxonomy_level(type_label)
+
+    print("Get community size...", end="")
+    df_abs_total_abundances = pivot(df, "Value_abs", index_grouper)
+    community_size = df_abs_total_abundances["Value_abs"].min()
+    print("DONE")
+    print(f"Community size: {community_size}")
+
+    print("Calculate absolute abundances per taxa...", end="")
+    df_abs_taxa_abundances = pivot(df, "Value_abs", index_grouper, columns_grouper)
+    print("DONE")
+
+    print("Perform normalization...", end="")
+    df_abs_taxa_abundances = rarify(df_abs_taxa_abundances)
+    print("DONE")
+
+    print("Calculate relative abundances...", end="")
+    df_rel_taxa_abundances = df_abs_taxa_abundances.div(
+        df_abs_taxa_abundances.sum(axis=1), axis=0
+    ).fillna(0)
+    print("DONE")
+
+    return df, df_rel_taxa_abundances, community_size, columns_grouper

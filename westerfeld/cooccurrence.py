@@ -3,12 +3,7 @@ import math
 from grakel import ShortestPath, WeisfeilerLehman
 from scipy.stats import gmean
 
-from _preparation import common_preparation, rarify
-from _utils import (
-    EXPERIMENT_COLUMNS,
-    pivot,
-    taxonomy_level,
-)
+from _preparation import relative_abundances
 
 from graph.settings import USE_MCLR, MCLR_C
 from graph.creation.registry import get_graph_creator
@@ -19,30 +14,9 @@ from graph.comparison.kernels import graph_kernel
 def cooccurrence(
     type_label, file_name, years=None, habitats=None, beneficials=None, crops=None
 ):
-    df = common_preparation(type_label, years, habitats, beneficials, crops)
-
-    index_grouper = EXPERIMENT_COLUMNS
-
-    print("Get community size...", end="")
-    df_abs_total_abundances = pivot(df, "Value_abs", index_grouper)
-    community_size = df_abs_total_abundances["Value_abs"].min()
-    print("DONE")
-    print(f"Community size: {community_size}")
-
-    print("Calculate absolute abundances per taxa...", end="")
-    columns_grouper = taxonomy_level(type_label)
-    df_abs_taxa_abundances = pivot(df, "Value_abs", index_grouper, columns_grouper)
-    print("DONE")
-
-    print("Perform normalization...", end="")
-    df_abs_taxa_abundances = rarify(df_abs_taxa_abundances)
-    print("DONE")
-
-    print("Calculate relative abundances...", end="")
-    df_rel_taxa_abundances = df_abs_taxa_abundances.div(
-        df_abs_taxa_abundances.sum(axis=1), axis=0
-    ).fillna(0)
-    print("DONE")
+    _, df_rel_taxa_abundances, _, _ = relative_abundances(
+        type_label, years, habitats, beneficials, crops
+    )
 
     if USE_MCLR:
         # transform via mCLR

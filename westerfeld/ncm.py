@@ -6,12 +6,7 @@ import scipy as sp
 from lmfit import Parameters, Model
 from scipy.stats import bootstrap
 
-from _preparation import common_preparation, rarify
-from _utils import (
-    EXPERIMENT_COLUMNS,
-    pivot,
-    taxonomy_level,
-)
+from _preparation import relative_abundances
 
 
 def custom_beta_cdf(p, N, m):
@@ -25,30 +20,9 @@ def custom_beta_cdf(p, N, m):
 
 
 def ncm(type_label, file_name, years=None, habitats=None, beneficials=None, crops=None):
-    df = common_preparation(type_label, years, habitats, beneficials, crops)
-
-    index_grouper = EXPERIMENT_COLUMNS
-
-    print("Get community size...", end="")
-    df_abs_total_abundances = pivot(df, "Value_abs", index_grouper)
-    community_size = df_abs_total_abundances["Value_abs"].min()
-    print("DONE")
-    print(f"Community size: {community_size}")
-
-    print("Calculate absolute abundances per taxa...", end="")
-    columns_grouper = taxonomy_level(type_label)
-    df_abs_taxa_abundances = pivot(df, "Value_abs", index_grouper, columns_grouper)
-    print("DONE")
-
-    print("Perform normalization...", end="")
-    df_abs_taxa_abundances = rarify(df_abs_taxa_abundances)
-    print("DONE")
-
-    print("Calculate relative abundances...", end="")
-    df_rel_taxa_abundances = df_abs_taxa_abundances.div(
-        df_abs_taxa_abundances.sum(axis=1), axis=0
-    ).fillna(0)
-    print("DONE")
+    df, df_rel_taxa_abundances, community_size, columns_grouper = relative_abundances(
+        type_label, years, habitats, beneficials, crops
+    )
 
     print("Computing mean relative abundances and occurrence frequencies...", end="")
     n_samples, n_taxa = df_rel_taxa_abundances.shape
