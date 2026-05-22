@@ -128,6 +128,25 @@ def summarize_taxa_prediction(results):
     )
 
 
+def predictability_summary(results, metric, threshold):
+    values = results[metric]
+    n = int(values.notna().sum())
+    n_above = int((values > threshold).sum())
+    return pd.Series(
+        {
+            "n": n,
+            "min": values.min(),
+            "q25": values.quantile(0.25),
+            "median": values.median(),
+            "q75": values.quantile(0.75),
+            "max": values.max(),
+            "threshold": threshold,
+            "n_above": n_above,
+            "frac_above": n_above / n if n else float("nan"),
+        }
+    )
+
+
 def main():
     print("-------------------")
     print("| TAXA PREDICTION |")
@@ -145,6 +164,9 @@ def main():
     classification_summary = summarize_taxa_prediction(classification)
     print(regression_summary)
     print(classification_summary)
+
+    print(predictability_summary(regression, "r2_test", 0.5))
+    print(predictability_summary(classification, "auc_test", 0.7))
 
     regression.to_csv("taxa_prediction_abundance.csv", index=False)
     classification.to_csv("taxa_prediction_presence.csv", index=False)
