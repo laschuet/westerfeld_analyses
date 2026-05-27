@@ -1,6 +1,8 @@
+import pandas as pd
+
 from grakel import ShortestPath, WeisfeilerLehman
 
-from _preparation import relative_abundances, mclr
+from _preparation import rarefied_taxa_table, mclr
 from _utils import calc_iou
 
 from graph.comparison.kernels import graph_kernel
@@ -9,17 +11,28 @@ from graph.settings import USE_MCLR, MCLR_C
 
 
 def cooccurrence(
-    type_label, file_name, years=None, habitats=None, beneficials=None, crops=None
+    type_labels, file_name, years=None, habitats=None, beneficials=None, crops=None
 ):
-    _, df_rel_taxa_abundances, _, _ = relative_abundances(
-        type_label, years, habitats, beneficials, crops
-    )
-
-    if USE_MCLR:
-        df_rel_taxa_abundances = mclr(df_rel_taxa_abundances, c=MCLR_C)
+    # Per-kingdom: rarefy -> relative abundance -> (m)CLR within its own
+    # composition (so the CLR's geometric-mean reference stays coherent and the
+    # different sequencing depths don't contaminate each other), then inner-join
+    # the per-kingdom frames on the sample axis. Columns are prefixed with the
+    # kingdom (e.g. "Fungi:species_x") so each node's origin is explicit in the
+    # resulting graph.
+    kingdom_frames = []
+    for type_label in type_labels:
+        df_abs = rarefied_taxa_table(
+            type_label, years, habitats, beneficials, crops
+        )
+        df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
+        if USE_MCLR:
+            df_rel = mclr(df_rel, c=MCLR_C)
+        df_rel.columns = [f"{type_label}:{taxon}" for taxon in df_rel.columns]
+        kingdom_frames.append(df_rel)
+    df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
 
     graph_creator = get_graph_creator()
-    return graph_creator.create_network(df_rel_taxa_abundances)
+    return graph_creator.create_network(df_combined)
 
 
 def main():
@@ -28,21 +41,19 @@ def main():
     print("-----------------")
 
     graph_1 = cooccurrence(
-        "Fungi",
+        ["Fungi", "Bacteria"],
         "cooccurrence--",
         years=2019,
         habitats="Field_Soil",
-        beneficials="Control",
-        crops=["Grain maize", "Winter wheat 1", "Winter wheat 2"],
+        crops=["Winter wheat 1", "Winter wheat 2"],
     )
 
     graph_2 = cooccurrence(
-        "Fungi",
+        ["Fungi", "Bacteria"],
         "cooccurrence--",
         years=2019,
         habitats="Rhizosphere",
-        beneficials="Control",
-        crops=["Grain maize", "Winter wheat 1", "Winter wheat 2"],
+        crops=["Winter wheat 1", "Winter wheat 2"],
     )
 
     print(graph_1)

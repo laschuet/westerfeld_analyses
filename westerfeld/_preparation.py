@@ -449,6 +449,24 @@ def relative_abundances(
     return df, df_rel_taxa_abundances, community_size, columns_grouper
 
 
+def rarefied_taxa_table(
+    type_label, years=None, habitats=None, beneficials=None, crops=None
+):
+    """Per-kingdom building block: common preparation + pivot + rarify.
+    Rows = samples by EXPERIMENT_COLUMNS, columns = taxa, values = rarefied
+    absolute counts. Intended to be composed by analysis scripts (e.g. a
+    multi-kingdom merge inside ``cooccurrence``)."""
+    df = common_preparation(type_label, years, habitats, beneficials, crops)
+    df_abs = df.pivot_table(
+        index=EXPERIMENT_COLUMNS,
+        columns=taxonomy_level(type_label),
+        values="Value_abs",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    return rarify(df_abs)
+
+
 def filter_prevalence(df, min_prevalence):
     """Keep taxa (columns) present in at least min_prevalence of the samples."""
     prevalence = (df > 0).mean(axis=0)
