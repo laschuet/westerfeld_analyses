@@ -7,7 +7,21 @@ from _utils import calc_iou
 
 from graph.comparison.kernels import graph_kernel
 from graph.creation.registry import get_graph_creator
-from graph.settings import USE_MCLR, MCLR_C
+from graph.settings import USE_MCLR, MCLR_C, BLOCK_SCALE
+
+
+def _scale_block(df, mode):
+    """Apply per-kingdom block scaling. See `BLOCK_SCALE` in `graph.settings`."""
+    if mode in (None, "none"):
+        return df
+    if mode == "zscore":
+        return (df - df.mean()) / df.std(ddof=0).replace(0, 1)
+    if mode == "center":
+        return df - df.mean()
+    if mode == "block":
+        scale = df.std(ddof=0).mean() or 1
+        return df / scale
+    raise ValueError(f"Unknown BLOCK_SCALE value: {mode}")
 
 
 def cooccurrence(
@@ -15,10 +29,10 @@ def cooccurrence(
 ):
     # Per-kingdom: rarefy -> relative abundance -> (m)CLR within its own
     # composition (so the CLR's geometric-mean reference stays coherent and the
-    # different sequencing depths don't contaminate each other), then inner-join
-    # the per-kingdom frames on the sample axis. Columns are prefixed with the
-    # kingdom (e.g. "Fungi:species_x") so each node's origin is explicit in the
-    # resulting graph.
+    # different sequencing depths don't contaminate each other), optionally
+    # block-scale, then inner-join the per-kingdom frames on the sample axis.
+    # Columns are prefixed with the kingdom (e.g. "Fungi:species_x") so each
+    # node's origin is explicit in the resulting graph.
     kingdom_frames = []
     for type_label in type_labels:
         df_abs = rarefied_taxa_table(
@@ -27,6 +41,7 @@ def cooccurrence(
         df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
         if USE_MCLR:
             df_rel = mclr(df_rel, c=MCLR_C)
+        df_rel = _scale_block(df_rel, BLOCK_SCALE)
         df_rel.columns = [f"{type_label}:{taxon}" for taxon in df_rel.columns]
         kingdom_frames.append(df_rel)
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
