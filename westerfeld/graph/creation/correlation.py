@@ -60,8 +60,8 @@ class CorrelationGraph(GraphCreationMethod):
                     G.add_edge(
                         taxon_i,
                         taxon_j,
-                        correlation=corr_df.loc[taxon_i, taxon_j],
-                        positiv_correlation=corr_df.loc[taxon_i, taxon_j] > 0,
+                        weight=corr_df.loc[taxon_i, taxon_j],
+                        positive_association=corr_df.loc[taxon_i, taxon_j] > 0,
                     )
 
         nodes_attr = dict(G.nodes)

@@ -95,7 +95,7 @@ def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.G
     BFS enumeration of common connected substructures of `G1` and `G2`.
 
     Seeds with one trivial subgraph per shared node, then repeatedly extends
-    each candidate by one shared edge whose `positiv_correlation` attribute
+    each candidate by one shared edge whose `positive_association` attribute
     agrees in both graphs. Returns every reachable substructure (deepest last);
     pass `n` to return only the last `n` of them.
 
@@ -105,8 +105,8 @@ def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.G
     candidate_edges = {
         e
         for e in _canonical_edges(G1) & _canonical_edges(G2)
-        if G1.edges[e].get("positiv_correlation")
-        == G2.edges[e].get("positiv_correlation")
+        if G1.edges[e].get("positive_association")
+        == G2.edges[e].get("positive_association")
     }
 
     structures: list[nx.Graph] = []
@@ -129,7 +129,7 @@ def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.G
                 h = g.copy()
                 h.add_edge(
                     *e,
-                    positiv_correlation=G1.edges[e].get("positiv_correlation"),
+                    positive_association=G1.edges[e].get("positive_association"),
                 )
                 if any(_graph_equal(h, s) for s in new_structures):
                     continue
