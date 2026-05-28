@@ -1,3 +1,5 @@
+import os
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -181,6 +183,6 @@ class GlassoGraph(GraphCreationMethod):
         )
         cb = plt.colorbar(im)
         cb.ax.tick_params(labelsize=14)
-        plt.savefig(
-            f"out/covariance_matrix_{postfix}.png", dpi=300, bbox_inches="tight"
-        )
+        path = f"out/covariance_matrix_{postfix}.png"
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        plt.savefig(path, dpi=300, bbox_inches="tight")
