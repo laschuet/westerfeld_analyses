@@ -30,9 +30,11 @@ class GlassoGraph(GraphCreationMethod):
         cov_corr = np.corrcoef(df.T.values)
         self.plot_covariance_matrix(cov_est, "estimated")
         self.plot_covariance_matrix(cov_corr, "correlation")
-
-        X = StandardScaler().fit_transform(cov_est)
-
+ 
+        # Standardise each taxon over samples
+        X = StandardScaler().fit_transform(df.values)
+        # GraphicalLassoCV.fit expects raw samples x features and
+        # computes the empirical covariance itself
         model = GraphicalLassoCV(
             alphas=self.alphas, max_iter=self.max_iter, verbose=True
         )
