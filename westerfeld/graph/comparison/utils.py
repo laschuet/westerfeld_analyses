@@ -82,6 +82,66 @@ def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
     return G
 
 
+def _graph_equal(g1: nx.Graph, g2: nx.Graph) -> bool:
+    """Equal iff the node sets and (unordered) edge sets match."""
+    return (
+        set(g1.nodes) == set(g2.nodes)
+        and _canonical_edges(g1) == _canonical_edges(g2)
+    )
+
+
+def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.Graph]:
+    """
+    BFS enumeration of common connected substructures of `G1` and `G2`.
+
+    Seeds with one trivial subgraph per shared node, then repeatedly extends
+    each candidate by one shared edge whose `positiv_correlation` attribute
+    agrees in both graphs. Returns every reachable substructure (deepest last);
+    pass `n` to return only the last `n` of them.
+
+    Can be expensive on large dense graphs: the enumeration runs to completion
+    regardless of `n` (which only slices the return).
+    """
+    candidate_edges = {
+        e
+        for e in _canonical_edges(G1) & _canonical_edges(G2)
+        if G1.edges[e].get("positiv_correlation")
+        == G2.edges[e].get("positiv_correlation")
+    }
+
+    structures: list[nx.Graph] = []
+    for node in shared_nodes(G1, G2):
+        h = nx.Graph()
+        h.add_node(node)
+        structures.append(h)
+
+    frontier = list(structures)
+    while frontier:
+        new_structures: list[nx.Graph] = []
+        for g in frontier:
+            g_nodes = set(g.nodes)
+            g_edges = _canonical_edges(g)
+            for e in candidate_edges:
+                if e in g_edges:
+                    continue
+                if e[0] not in g_nodes and e[1] not in g_nodes:
+                    continue
+                h = g.copy()
+                h.add_edge(
+                    *e,
+                    positiv_correlation=G1.edges[e].get("positiv_correlation"),
+                )
+                if any(_graph_equal(h, s) for s in new_structures):
+                    continue
+                new_structures.append(h)
+        structures.extend(new_structures)
+        frontier = new_structures
+
+    if n != -1:
+        return structures[-n:]
+    return structures
+
+
 def _iou_nodes(g1, g2):
     return calc_iou(list(g1.nodes), list(g2.nodes))
 

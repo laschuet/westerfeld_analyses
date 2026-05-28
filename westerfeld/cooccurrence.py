@@ -6,6 +6,7 @@ from graph.comparison.utils import (
     common_subgraph,
     compare_graph_metrics,
     compare_graphs_pairwise,
+    find_similar_subgraphs,
     is_subgraph,
 )
 from graph.creation.correlation import CorrelationGraph
@@ -120,6 +121,14 @@ def main():
     )
     print(f"Graph_1 is subgraph of graph_2: {is_subgraph(graph_1, graph_2)}")
     print(f"Graph_2 is subgraph of graph_1: {is_subgraph(graph_2, graph_1)}")
+
+    # Can be slow on dense graphs
+    # similar = find_similar_subgraphs(graph_1, graph_2)
+    # largest = max((s.number_of_edges() for s in similar), default=0)
+    # print(
+    #     f"\nFind_similar_subgraphs: {len(similar)} sign-matching substructures, "
+    #     f"largest = {largest} edges"
+    # )
 
 
 if __name__ == "__main__":
