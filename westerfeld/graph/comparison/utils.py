@@ -9,7 +9,7 @@ import pandas as pd
 from grakel import ShortestPath, WeisfeilerLehman
 from scipy.stats import entropy
 
-from graph.creation.registry import get_graph_creator
+from graph.creation.correlation import CorrelationGraph
 from graph.comparison.kernels import graph_kernel
 from _utils import calc_iou
 from graph.utils import preprocessing, visualize_graphs, create_figure_simple
@@ -288,7 +288,7 @@ def full_multiple_graphs_evaluation(
 ):
     # create graphs and figures per data
     graphs: list[nx.Graph] = []
-    graph_creator = get_graph_creator()
+    graph_creator = CorrelationGraph()
     for data in transformed_data:
         preprossed_data, lookup_data, relative_data = preprocessing(data, lookup_data)
         graph = graph_creator.create_network(

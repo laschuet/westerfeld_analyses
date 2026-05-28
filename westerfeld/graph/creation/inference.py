@@ -7,22 +7,20 @@ from sklearn.covariance import GraphicalLassoCV
 from sklearn.discriminant_analysis import StandardScaler
 
 from .utils import GraphCreationMethod
-from graph.settings import (
-    GLASSO_ALPHAS,
-    GLASSO_MAX_ITER,
-    INVERSE_VARIANCE_ZERO_THRESHOLD,
-)
 from graph.utils import identifiy_generalists_or_specialists
 
 
-class GlassoGraphCreationMethod(GraphCreationMethod):
-    @classmethod
-    def calculate_covariance(cls, df: pd.DataFrame) -> np.ndarray:
+class GlassoGraph(GraphCreationMethod):
+    def __init__(self, alphas=7, max_iter=500, inverse_variance_zero_threshold=1e-2):
+        self.alphas = alphas
+        self.max_iter = max_iter
+        self.inverse_variance_zero_threshold = inverse_variance_zero_threshold
+
+    def calculate_covariance(self, df):
         return np.cov(df)
 
-    @classmethod
     def create_network(
-        cls,
+        self,
         df: pd.DataFrame,
         df_lookup: pd.DataFrame | None = None,
         df_relative: pd.DataFrame | None = None,
@@ -30,20 +28,20 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
         # Lasso method (https://scikit-learn.org/stable/modules/generated/sklearn.covariance.GraphicalLasso.html)
         cov_est = np.cov(df.T.values, bias=True)
         cov_corr = np.corrcoef(df.T.values)
-        cls.plot_covariance_matrix(cov_est, "estimated")
-        cls.plot_covariance_matrix(cov_corr, "correlation")
+        self.plot_covariance_matrix(cov_est, "estimated")
+        self.plot_covariance_matrix(cov_corr, "correlation")
 
         X = StandardScaler().fit_transform(cov_est)
 
         model = GraphicalLassoCV(
-            alphas=GLASSO_ALPHAS, max_iter=GLASSO_MAX_ITER, verbose=True
+            alphas=self.alphas, max_iter=self.max_iter, verbose=True
         )
         model.fit(X)
 
         cov = model.covariance_
 
-        cov = np.where(np.abs(cov) < INVERSE_VARIANCE_ZERO_THRESHOLD, 0, cov)
-        cls.plot_covariance_matrix(cov, "glasso_estimated")
+        cov = np.where(np.abs(cov) < self.inverse_variance_zero_threshold, 0, cov)
+        self.plot_covariance_matrix(cov, "glasso_estimated")
 
         cov_df = pd.DataFrame(cov, index=df.columns, columns=df.columns)
 
@@ -73,8 +71,7 @@ class GlassoGraphCreationMethod(GraphCreationMethod):
         nx.set_node_attributes(G, nodes_attr)
         return G
 
-    @classmethod
-    def plot_covariance_matrix(cls, covariance_matrix, postfix=""):
+    def plot_covariance_matrix(self, covariance_matrix, postfix=""):
         df_cov = pd.DataFrame(covariance_matrix)
 
         f = plt.figure(figsize=(12, 10))

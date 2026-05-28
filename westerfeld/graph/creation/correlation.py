@@ -4,21 +4,20 @@ import numpy as np
 import pandas as pd
 
 from scipy.stats import pearsonr, spearmanr
-from typing import Tuple
 
 from .utils import GraphCreationMethod
-from graph.settings import CORRELATION_COEFFICIENT, CORRELATION_THRESHOLD
 from graph.utils import identifiy_generalists_or_specialists
 
 
-class CorrelationGraphCreationMethod(GraphCreationMethod):
-    @classmethod
-    def calculate_correlations(
-        cls, df: pd.DataFrame
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        if CORRELATION_COEFFICIENT == "spearman":
+class CorrelationGraph(GraphCreationMethod):
+    def __init__(self, coefficient="spearman", threshold=0.68):
+        self.coefficient = coefficient
+        self.threshold = threshold
+
+    def calculate_correlations(self, df):
+        if self.coefficient == "spearman":
             corr, pval = spearmanr(df)
-        elif CORRELATION_COEFFICIENT == "pearson":
+        elif self.coefficient == "pearson":
             corr = np.ndarray(shape=(df.shape[1], df.shape[1]))
             pval = np.ndarray(shape=(df.shape[1], df.shape[1]))
             for spec1, i in zip(df, range(df.shape[1])):
@@ -33,27 +32,29 @@ class CorrelationGraphCreationMethod(GraphCreationMethod):
                         pval[i][j] = res.pvalue
                         pval[j][i] = res.pvalue
         else:
-            raise Exception("no valid `CORRELATION_COEFFICIENT`!")
+            raise ValueError(
+                f"Unknown correlation coefficient: {self.coefficient} "
+                "(expected 'spearman' or 'pearson')"
+            )
 
         corr_df = pd.DataFrame(corr, index=df.columns, columns=df.columns)
         pval_df = pd.DataFrame(pval, index=df.columns, columns=df.columns)
         return corr_df, pval_df
 
-    @classmethod
     def create_network(
-        cls,
+        self,
         df: pd.DataFrame,
         df_lookup: pd.DataFrame | None = None,
         df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
-        corr_df, pval_df = cls.calculate_correlations(df)
+        corr_df, pval_df = self.calculate_correlations(df)
 
         G = nx.Graph()
         for i, taxon_i in enumerate(df.columns):
             for j, taxon_j in enumerate(df.columns):
                 if (
                     i < j
-                    and abs(corr_df.loc[taxon_i, taxon_j]) >= CORRELATION_THRESHOLD
+                    and abs(corr_df.loc[taxon_i, taxon_j]) >= self.threshold
                     and pval_df.loc[taxon_i, taxon_j] <= 0.05
                 ):
                     G.add_edge(

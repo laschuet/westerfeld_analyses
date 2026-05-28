@@ -6,7 +6,7 @@ from _preparation import rarefied_taxa_table, mclr
 from _utils import calc_iou
 
 from graph.comparison.kernels import graph_kernel
-from graph.creation.registry import get_graph_creator
+from graph.creation.correlation import CorrelationGraph
 from graph.settings import USE_MCLR, MCLR_C, BLOCK_SCALE
 
 
@@ -25,7 +25,7 @@ def _scale_block(df, mode):
 
 
 def cooccurrence(
-    kingdoms, file_name, years=None, habitats=None, beneficials=None, crops=None
+    kingdoms, graph_creator, years=None, habitats=None, beneficials=None, crops=None
 ):
     # `kingdoms` maps each kingdom to the taxonomy level to
     # aggregate it at, e.g. `{"Fungi": "Species", "Bacteria": "Genus"}`.
@@ -48,7 +48,6 @@ def cooccurrence(
         kingdom_frames.append(df_rel)
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
 
-    graph_creator = get_graph_creator()
     return graph_creator.create_network(df_combined)
 
 
@@ -59,10 +58,11 @@ def main():
 
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
+    graph_creator = CorrelationGraph(coefficient="spearman", threshold=0.68)
 
     graph_1 = cooccurrence(
         kingdoms,
-        "cooccurrence--",
+        graph_creator,
         years=2019,
         habitats="Field_Soil",
         crops=crops,
@@ -70,7 +70,7 @@ def main():
 
     graph_2 = cooccurrence(
         kingdoms,
-        "cooccurrence--",
+        graph_creator,
         years=2019,
         habitats="Rhizosphere",
         crops=crops,

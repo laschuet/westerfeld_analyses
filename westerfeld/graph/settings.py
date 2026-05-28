@@ -3,14 +3,6 @@ INPUT_FILE = "../df_Fungi_19_F_Co_.csv"  # The path to the input of the network
 LOOKUP_FILE = "../df_fungi.csv"  # The path to the input of the network
 NODE_NAME = "Species"  # This can be Species, but also OTUs or ASVs / identifier
 
-# Graph creation method
-GRAPH_CREATOR_NAME = "correlation"  # Either: "correlation", "inference_glasso"
-CORRELATION_COEFFICIENT = "spearman"  # Choose either 'spearman' or 'pearson'
-
-INVERSE_VARIANCE_ZERO_THRESHOLD = 1e-2  # If the inverse variance is smaller than this threshold, it will be set to zero
-GLASSO_ALPHAS = 7  # The alpha parameter for the graphical lasso. Higher values lead to more sparse networks
-GLASSO_MAX_ITER = 500  # The maximum number of iterations for the graphical lasso
-
 # Prepocessing
 USE_ABSOLUTE_THRESHOLD_TO_OBTAIN_COMMON_ASVS = True  # Set to `True` if all ASVs, with a total sum of absoute abundances, that are less than a threshold, should be removed
 ABSOLUTE_THRESHOLD = 100
@@ -38,11 +30,6 @@ MCLR_C = 1  # Minimal distance from zeros after mCLR was perfomed
 #   "block"  - divide each column by the kingdom's average std (between-kingdom
 #              variances equalised, within-kingdom ratios preserved)
 BLOCK_SCALE = "none"
-
-# Threshold
-CORRELATION_THRESHOLD = (
-    0.68  # Will be used a an absolute threshold (positive and negative)
-)
 
 # Specialists and generalists
 MEAN_RELATIVE_ABUNDANCES_LOWER_THRESHOLD: float = 2e-5
