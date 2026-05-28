@@ -20,17 +20,6 @@ USE_MCLR = (
 )
 MCLR_C = 1  # Minimal distance from zeros after mCLR was perfomed
 
-# Block-wise scaling applied per kingdom in the multi-kingdom co-occurrence
-# pipeline, after mCLR and before merging. Mostly a no-op for correlation-based
-# graphs (correlation is scale-invariant); matters for covariance-based graphs
-# (e.g. graphical lasso), where one kingdom's variance can otherwise dominate.
-#   "none"   - off (default)
-#   "zscore" - per-column standardisation (mean 0, std 1); loses within-kingdom variance ratios
-#   "center" - per-column centring (mean 0, variances preserved)
-#   "block"  - divide each column by the kingdom's average std (between-kingdom
-#              variances equalised, within-kingdom ratios preserved)
-BLOCK_SCALE = "none"
-
 # Specialists and generalists
 MEAN_RELATIVE_ABUNDANCES_LOWER_THRESHOLD: float = 2e-5
 B_VALUE_SPECIALIST_THRESHOLD = 1.5  # Values lower than `B_VALUE_SPECIALIST_THRESHOLD` are identified as specialists

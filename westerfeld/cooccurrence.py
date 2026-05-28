@@ -7,11 +7,19 @@ from _utils import calc_iou
 
 from graph.comparison.kernels import graph_kernel
 from graph.creation.correlation import CorrelationGraph
-from graph.settings import USE_MCLR, MCLR_C, BLOCK_SCALE
+from graph.creation.inference import GlassoGraph
 
 
 def _scale_block(df, mode):
-    """Apply per-kingdom block scaling. See `BLOCK_SCALE` in `graph.settings`."""
+    """Per-kingdom block scaling for the multi-kingdom merge.
+
+    Modes:
+      "none"   - off
+      "zscore" - per-column standardisation (mean 0, std 1)
+      "center" - per-column centring (mean 0, variances preserved)
+      "block"  - divide each column by the kingdom's average std
+                 (between-kingdom variances equalised, within-kingdom ratios preserved)
+    """
     if mode in (None, "none"):
         return df
     if mode == "zscore":
@@ -21,11 +29,19 @@ def _scale_block(df, mode):
     if mode == "block":
         scale = df.std(ddof=0).mean() or 1
         return df / scale
-    raise ValueError(f"Unknown BLOCK_SCALE value: {mode}")
+    raise ValueError(f"Unknown mode value: {mode}")
 
 
 def cooccurrence(
-    kingdoms, graph_creator, years=None, habitats=None, beneficials=None, crops=None
+    kingdoms,
+    graph_creator,
+    years=None,
+    habitats=None,
+    beneficials=None,
+    crops=None,
+    use_mclr=True,
+    mclr_c=1,
+    block_scale="none",
 ):
     # `kingdoms` maps each kingdom to the taxonomy level to
     # aggregate it at, e.g. `{"Fungi": "Species", "Bacteria": "Genus"}`.
@@ -41,9 +57,9 @@ def cooccurrence(
             type_label, taxonomy, years, habitats, beneficials, crops
         )
         df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
-        if USE_MCLR:
-            df_rel = mclr(df_rel, c=MCLR_C)
-        df_rel = _scale_block(df_rel, BLOCK_SCALE)
+        if use_mclr:
+            df_rel = mclr(df_rel, c=mclr_c)
+        df_rel = _scale_block(df_rel, block_scale)
         df_rel.columns = [f"{type_label}:{taxon}" for taxon in df_rel.columns]
         kingdom_frames.append(df_rel)
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
@@ -58,7 +74,8 @@ def main():
 
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    graph_creator = CorrelationGraph(coefficient="spearman", threshold=0.68)
+    # graph_creator = CorrelationGraph()
+    graph_creator = GlassoGraph()
 
     graph_1 = cooccurrence(
         kingdoms,
