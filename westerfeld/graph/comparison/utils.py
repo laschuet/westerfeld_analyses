@@ -1,357 +1,128 @@
-import logging
-import os
-
-import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
 
 from grakel import ShortestPath, WeisfeilerLehman
-from scipy.stats import entropy
 
-from graph.creation.correlation import CorrelationGraph
-from graph.comparison.kernels import graph_kernel
 from _utils import calc_iou
-from graph.utils import preprocessing, visualize_graphs, create_figure_simple
+from graph.comparison.kernels import graph_kernel
 
 
-def are_graphs_essentially_the_same(g1: nx.Graph, g2: nx.Graph):
-    """Check if graphs are equal.
-
-    Equality here means the same nodes and edges
-
-    Parameters
-    ----------
-    g1, g2 : graph
-
-    Returns
-    -------
-    bool
-        True if graphs are equal, False otherwise.
+def graph_metrics(G: nx.Graph) -> dict:
     """
-    if sorted(list(g1.nodes)) == sorted(list(g2.nodes)):
-        return True
-    if sorted([(sorted(item)) for item in g1.edges]) == sorted(
-        [(sorted(item)) for item in g2.edges]
-    ):
-        return True
-    return False
+    Summary statistics for a single graph.
+
+    Diameter / average shortest path length are reported on the largest
+    connected component (they are undefined for disconnected graphs).
+    """
+    n_nodes = G.number_of_nodes()
+    n_edges = G.number_of_edges()
+    if n_nodes == 0:
+        return {
+            "nodes": 0,
+            "edges": 0,
+            "density": 0.0,
+            "avg_degree": 0.0,
+            "components": 0,
+            "largest_cc": 0,
+            "diameter": float("nan"),
+            "avg_shortest_path": float("nan"),
+            "avg_clustering": 0.0,
+        }
+
+    degrees = [d for _, d in G.degree()]
+    components = list(nx.connected_components(G))
+    largest_cc = max(components, key=len)
+    H = G.subgraph(largest_cc)
+    return {
+        "nodes": n_nodes,
+        "edges": n_edges,
+        "density": nx.density(G),
+        "avg_degree": float(np.mean(degrees)),
+        "components": len(components),
+        "largest_cc": len(largest_cc),
+        "diameter": nx.diameter(H),
+        "avg_shortest_path": nx.average_shortest_path_length(H),
+        "avg_clustering": nx.average_clustering(G),
+    }
 
 
-def get_shared_nodes(G1: nx.Graph, G2: nx.Graph) -> np.ndarray:
-    return np.intersect1d(list(G1.nodes), list(G2.nodes))
+def compare_graph_metrics(graphs: list[nx.Graph], labels: list[str]) -> pd.DataFrame:
+    """One row per graph with `graph_metrics` columns."""
+    return pd.DataFrame([graph_metrics(g) for g in graphs], index=labels)
 
 
-def sort_items_universally(items):
-    return list([(sorted(item)) for item in items])
+def _canonical_edges(G: nx.Graph) -> set:
+    """Return edges as a set of sorted tuples (so (a,b) == (b,a))."""
+    return {tuple(sorted(e)) for e in G.edges}
 
 
-def get_shared_edges(G1: nx.Graph, G2: nx.Graph) -> list:
-    shared_edges = [
-        list(e)
-        for e in [(sorted(item)) for item in G1.edges]
-        if e in [(sorted(item)) for item in G2.edges]
-    ]  # sort edges, so e1=(n1,n2) is equal to e2=(n2,n1)
-    return shared_edges
+def shared_nodes(G1: nx.Graph, G2: nx.Graph) -> list:
+    return sorted(set(G1.nodes) & set(G2.nodes))
 
 
-def contains_graph(G: nx.Graph, G_list: list[nx.Graph]):
-    for g in G_list:
-        if are_graphs_essentially_the_same(g, G):
-            return True
-    return False
+def shared_edges(G1: nx.Graph, G2: nx.Graph) -> list:
+    return sorted(_canonical_edges(G1) & _canonical_edges(G2))
 
 
-def find_suitable_edges(G1: nx.Graph, G2: nx.Graph, g: nx.Graph):
-    possible = get_shared_edges(G1, G2)
-    possible = list(
-        filter(lambda x: x[0] in list(g.nodes) or x[1] in list(g.nodes), possible)
-    )
-    possible = list(
-        filter(lambda x: sorted(x) not in sort_items_universally(g.edges), possible)
-    )
-    return possible
+def is_subgraph(G_sub: nx.Graph, G: nx.Graph) -> bool:
+    """True iff every node and every edge of G_sub is also in G."""
+    if not set(G_sub.nodes) <= set(G.nodes):
+        return False
+    return _canonical_edges(G_sub) <= _canonical_edges(G)
 
 
-def create_graph_from(nodes, edges) -> nx.Graph:
+def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
+    """Graph on the nodes both graphs share, keeping only edges they both have."""
+    nodes = set(shared_nodes(G1, G2))
+    edges = [e for e in shared_edges(G1, G2) if e[0] in nodes and e[1] in nodes]
     G = nx.Graph()
     G.add_nodes_from(nodes)
     G.add_edges_from(edges)
     return G
 
 
-def expand_graph_by_edge(G: nx.Graph, edge, original_graph: nx.Graph) -> nx.Graph:
-    G_copy = G.copy()
-    G_copy.add_edge(
-        *edge, positiv_correlation=original_graph.edges[edge]["positiv_correlation"]
-    )
-    return G_copy
+def _iou_nodes(g1, g2):
+    return calc_iou(list(g1.nodes), list(g2.nodes))
 
 
-def is_subgraph(
-    G_sub: nx.Graph,
-    G: nx.Graph,
-):
-    if not np.array_equal(
-        np.intersect1d(list(G_sub.nodes), list(G.nodes)), list(G_sub.nodes)
-    ):
-        return False
-    if not np.array_equal(
-        get_shared_edges(G_sub, G), sort_items_universally(list(G_sub.edges))
-    ):
-        return False
-    return True
+def _iou_edges(g1, g2):
+    e1 = ["|".join(sorted(e)) for e in g1.edges]
+    e2 = ["|".join(sorted(e)) for e in g2.edges]
+    return calc_iou(e1, e2)
 
 
-def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n=-1):
-    # helping variables
-    g_structures = [create_graph_from([v], []) for v in get_shared_nodes(G1, G2)]
-    new_g_structures = g_structures
-
-    while len(new_g_structures) != 0:
-        new_structs = []
-        logging.info(f"New structures from iteration: {len(new_g_structures)}")
-        for g_expand in new_g_structures:
-            available_expanded_edges = find_suitable_edges(G1, G2, g_expand)
-            for e in available_expanded_edges:
-                g_expanded_tilde = expand_graph_by_edge(g_expand, e, G1)
-                if (
-                    is_subgraph(g_expanded_tilde, G1)
-                    and is_subgraph(g_expanded_tilde, G2)
-                    and not contains_graph(g_expanded_tilde, new_structs)
-                ):
-                    if (
-                        G1.edges[e]["positiv_correlation"]
-                        == G2.edges[e]["positiv_correlation"]
-                    ):
-                        new_structs.append(g_expanded_tilde)
-        new_g_structures = []
-        for g in new_structs:
-            new_g_structures.append(g)
-            g_structures.append(g)
-
-    if n != -1:
-        return g_structures[-n:]
-    else:
-        return g_structures
+def _kernel_shortest_path(g1, g2, normalize=True):
+    return graph_kernel([g1, g2], ShortestPath(normalize=normalize))[1, 0]
 
 
-def get_graph_metrics(G: nx.Graph, phylums: np.ndarray) -> dict:
-    # Calculate basic metrics
-    num_nodes = G.number_of_nodes()
-    num_edges = G.number_of_edges()
-    degrees = [d for n, d in G.degree()]
-    avg_degree = np.mean(degrees) if degrees else 0
-
-    degree_centrality = nx.degree_centrality(G)
-    mean_degree_centrality = (
-        np.mean(list(degree_centrality.values())) if degree_centrality else 0
-    )
-
-    betweenness_centrality = nx.betweenness_centrality(G)
-    mean_betweenness_centrality = (
-        np.mean(list(betweenness_centrality.values())) if betweenness_centrality else 0
-    )
-
-    phylum_count = pd.DataFrame(
-        pd.DataFrame(data=list(G.nodes.data()))[1]
-        .map(lambda it: it["Phylum"])
-        .fillna(0)
-        .value_counts()
-    )
-    for phylum in phylums:
-        if phylum not in phylum_count.index:
-            phylum_count.loc[phylum] = 0
-
-    phylum_distribution = phylum_count.apply(lambda x: x / len(G.nodes.data()))
-    phylum_diversity = entropy(phylum_distribution, base=len(phylums))[0]
-
-    if nx.is_connected(G):
-        diameter = nx.diameter(G)
-        avg_shortest_path = nx.average_shortest_path_length(G)
-    else:
-        largest_cc = max(nx.connected_components(G), key=len)
-        subgraph = G.subgraph(largest_cc)
-        diameter = nx.diameter(subgraph)
-        avg_shortest_path = nx.average_shortest_path_length(subgraph)
-
-    avg_clustering = nx.average_clustering(G)
-
-    return {
-        "Nodes": num_nodes,
-        "Edges": num_edges,
-        "Average Degree": avg_degree,
-        "(Mean) Degree Centrality": mean_degree_centrality,
-        "(Mean) Betweenness Centrality": mean_betweenness_centrality,
-        "Diameter": diameter,
-        "Average Shortest Path Length": avg_shortest_path,
-        "Average Clustering Coefficient": avg_clustering,
-        "Phylum Diversity (Entropy)": phylum_diversity,
-        "Phylum Distribution": phylum_count.to_dict()["count"],
-    }
+def _kernel_weisfeiler_lehman(g1, g2, normalize=True):
+    return graph_kernel([g1, g2], WeisfeilerLehman(normalize=normalize))[1, 0]
 
 
-def compare_graphs(
-    graphs: list[nx.Graph], names: list[str], phylums: np.ndarray, out: str | None
+_METRICS = {
+    "nodes_iou": _iou_nodes,
+    "edges_iou": _iou_edges,
+    "kernel_shortest_path": _kernel_shortest_path,
+    "kernel_weisfeiler_lehman": _kernel_weisfeiler_lehman,
+}
+
+
+def compare_graphs_pairwise(
+    graphs: list[nx.Graph], labels: list[str], metric: str, **metric_kwargs
 ) -> pd.DataFrame:
-    logging.info("Compare Graphs")
-    res = pd.DataFrame(
-        [get_graph_metrics(g, phylums) for g in graphs],
-        index=["graph_" + t for t in names],
-    )
-    if out is not None:
-        res.to_csv(out)
-    return res
+    """
+    Pairwise matrix of `metric` across `graphs`.
 
-
-def compare_graphs_pairwise_on(
-    graphs: list[nx.Graph],
-    names: list[str],
-    metric: str = "nodes_iou",
-    out: str = None,
-    normalized: bool = False,
-):
-    res = pd.DataFrame(columns=names, index=names)
-    for i, _ in res.iterrows():
-        for j, _ in res.iterrows():
-            numeric_i = list(names).index(i)
-            numeric_j = list(names).index(j)
-            if metric == "nodes_iou":
-                nodes_gi = list(graphs[numeric_i].nodes)
-                nodes_gj = list(graphs[numeric_j].nodes)
-                res.at[i, j] = calc_iou(nodes_gi, nodes_gj)
-            elif metric == "edges_iou":
-                # convert into list of sorted edges and then join for comparision in iou!
-                edges_gi = [
-                    "|".join(sorted(item)) for item in list(graphs[numeric_i].edges)
-                ]
-                edges_gj = [
-                    "|".join(sorted(item)) for item in list(graphs[numeric_j].edges)
-                ]
-                res.at[i, j] = calc_iou(edges_gi, edges_gj)
-            elif metric == "edit_distance":
-                # metric to compare the graphs.
-                # The value is the minimal edits needed (edges/nodes) so the graphs would be isometric
-                distance = -1
-                for edits in nx.optimal_edit_paths(
-                    graphs[numeric_i], graphs[numeric_j]
-                ):
-                    distance = edits
-                res.at[i, j] = distance
-            elif metric == "kernel_shortest_path":
-                res.at[i, j] = graph_kernel(
-                    [graphs[numeric_i], graphs[numeric_j]],
-                    ShortestPath(normalize=normalized),
-                )[1, 0]
-            elif metric == "kernel_weisfeiler_lehman":
-                res.at[i, j] = graph_kernel(
-                    [graphs[numeric_i], graphs[numeric_j]],
-                    WeisfeilerLehman(normalize=normalized),
-                )[1, 0]
-    if out:
-        res.to_csv(out.replace(".png", ".csv"))
-        f = plt.figure(figsize=(12, 10))
-        df = res.astype(float)
-        im = plt.matshow(df, fignum=f.number, cmap="Blues")
-        plt.xticks(
-            range(df.select_dtypes(["number"]).shape[1]),
-            df.select_dtypes(["number"]).columns,
-            fontsize=14,
-            rotation=45,
-        )
-        plt.yticks(
-            range(df.select_dtypes(["number"]).shape[1]),
-            df.select_dtypes(["number"]).columns,
-            fontsize=14,
-        )
-        for (i, j), z in np.ndenumerate(df):
-            plt.text(
-                j,
-                i,
-                "{:0.2f}".format(z),
-                ha="center",
-                va="center",
-                bbox=dict(facecolor="white", alpha=0.4),
-            )
-        cb = plt.colorbar(im)
-        cb.ax.tick_params(labelsize=14)
-        plt.title(f"Matrix ({metric})", fontsize=16)
-        plt.savefig(out)
-
-
-def full_multiple_graphs_evaluation(
-    raw_data: pd.DataFrame,
-    transformed_data: list,
-    seperator: np.ndarray,
-    phylums: np.ndarray,
-    lookup_data: pd.DataFrame,
-):
-    # create graphs and figures per data
-    graphs: list[nx.Graph] = []
-    graph_creator = CorrelationGraph()
-    for data in transformed_data:
-        preprossed_data, lookup_data, relative_data = preprocessing(data, lookup_data)
-        graph = graph_creator.create_network(
-            preprossed_data, lookup_data, relative_data
-        )
-        graphs.append(graph)
-
-    visualize_graphs(graphs, raw_data, seperator, phylums)
-
-    compare_graphs(
-        graphs=graphs, names=seperator, phylums=phylums, out="out/results.csv"
-    )
-    compare_graphs_pairwise_on(
-        graphs=graphs,
-        names=seperator,
-        metric="nodes_iou",
-        out="out/nodes_iou_matrics.png",
-    )
-    compare_graphs_pairwise_on(
-        graphs=graphs,
-        names=seperator,
-        metric="edges_iou",
-        out="out/edges_iou_matrics.png",
-    )
-    compare_graphs_pairwise_on(
-        graphs=graphs,
-        names=seperator,
-        metric="kernel_shortest_path",
-        out="out/kernel_shortest_path_norm.png",
-        normalized=True,
-    )
-    compare_graphs_pairwise_on(
-        graphs=graphs,
-        names=seperator,
-        metric="kernel_weisfeiler_lehman",
-        out="out/kernel_weisfeiler_lehman_norm.png",
-        normalized=True,
-    )
-    compare_graphs_pairwise_on(
-        graphs=graphs,
-        names=seperator,
-        metric="kernel_shortest_path",
-        out="out/kernel_shortest_path.png",
-        normalized=False,
-    )
-    compare_graphs_pairwise_on(
-        graphs=graphs,
-        names=seperator,
-        metric="kernel_weisfeiler_lehman",
-        out="out/kernel_weisfeiler_lehman.png",
-        normalized=False,
-    )
-    # compare_graphs_pairwise_on(graphs=graphs, names=seperator, metric="edit_distance", out="out/edit_distance_matrics.png") # this is very expensive to calculate!
-
-    for i in range(len(graphs)):
-        for j in range(len(graphs)):
-            if i > j:
-                found_patterns = find_similar_subgraphs(
-                    G1=graphs[i], G2=graphs[j], n=50
-                )
-                for pattern, k in zip(found_patterns, range(len(found_patterns))):
-                    create_figure_simple(pattern)
-                    output_dir = f"out/patterns/graph_{i}__{j}"
-                    os.makedirs(output_dir, exist_ok=True)
-                    plt.savefig(f"{output_dir}/{len(found_patterns) - k}.svg")
-                    plt.close()
+    Supported metrics: `nodes_iou`, `edges_iou`, `kernel_shortest_path`,
+    `kernel_weisfeiler_lehman`. Kernel metrics accept `normalize` (default
+    `True`).
+    """
+    if metric not in _METRICS:
+        raise ValueError(f"Unknown metric: {metric} (available: {sorted(_METRICS)})")
+    fn = _METRICS[metric]
+    matrix = pd.DataFrame(index=labels, columns=labels, dtype=float)
+    for i, gi in enumerate(graphs):
+        for j, gj in enumerate(graphs):
+            matrix.iloc[i, j] = fn(gi, gj, **metric_kwargs)
+    return matrix

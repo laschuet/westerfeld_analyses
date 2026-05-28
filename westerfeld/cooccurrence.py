@@ -1,11 +1,13 @@
 import pandas as pd
 
-from grakel import ShortestPath, WeisfeilerLehman
-
 from _preparation import rarefied_taxa_table, mclr
-from _utils import calc_iou
 
-from graph.comparison.kernels import graph_kernel
+from graph.comparison.utils import (
+    common_subgraph,
+    compare_graph_metrics,
+    compare_graphs_pairwise,
+    is_subgraph,
+)
 from graph.creation.correlation import CorrelationGraph
 from graph.creation.inference import GlassoGraph
 
@@ -74,8 +76,8 @@ def main():
 
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    # graph_creator = CorrelationGraph()
-    graph_creator = GlassoGraph()
+    graph_creator = CorrelationGraph()
+    # graph_creator = GlassoGraph()
 
     graph_1 = cooccurrence(
         kingdoms,
@@ -96,33 +98,28 @@ def main():
     print(graph_1)
     print(graph_2)
 
-    nodes_gi = list(graph_1.nodes)
-    nodes_gj = list(graph_2.nodes)
-    edges_gi = ["|".join(sorted(edge)) for edge in list(graph_1.edges)]
-    edges_gj = ["|".join(sorted(edge)) for edge in list(graph_2.edges)]
+    graphs = [graph_1, graph_2]
+    labels = ["Field_Soil", "Rhizosphere"]
 
-    print(calc_iou(nodes_gi, nodes_gj))
-    print(calc_iou(edges_gi, edges_gj))
+    print("\nPer-graph metrics")
+    print(compare_graph_metrics(graphs, labels))
 
-    # This is expensive
-    # distance = -1
-    # for edits in nx.optimal_edit_paths(graph_1, graph_2):
-    #     print(edits)
-    #     distance = edits
-    #     # TODO: Why should it always be the last element?
-    # print(distance)
+    for metric in (
+        "nodes_iou",
+        "edges_iou",
+        "kernel_shortest_path",
+        "kernel_weisfeiler_lehman",
+    ):
+        print(f"Pairwise {metric}")
+        print(compare_graphs_pairwise(graphs, labels, metric))
 
-    k = graph_kernel(
-        [graph_1, graph_2],
-        ShortestPath(normalize=True),
-    )  # [1, 0]
-    print(k)
-
-    k = graph_kernel(
-        [graph_1, graph_2],
-        WeisfeilerLehman(normalize=True),
-    )  # [1, 0]
-    print(k)
+    cs = common_subgraph(graph_1, graph_2)
+    print(
+        f"\nCommon subgraph: {cs.number_of_nodes()} nodes, "
+        f"{cs.number_of_edges()} edges"
+    )
+    print(f"Graph_1 is subgraph of graph_2: {is_subgraph(graph_1, graph_2)}")
+    print(f"Graph_2 is subgraph of graph_1: {is_subgraph(graph_2, graph_1)}")
 
 
 if __name__ == "__main__":
