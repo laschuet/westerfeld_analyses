@@ -25,8 +25,10 @@ def _scale_block(df, mode):
 
 
 def cooccurrence(
-    type_labels, file_name, years=None, habitats=None, beneficials=None, crops=None
+    kingdoms, file_name, years=None, habitats=None, beneficials=None, crops=None
 ):
+    # `kingdoms` maps each kingdom to the taxonomy level to
+    # aggregate it at, e.g. `{"Fungi": "Species", "Bacteria": "Genus"}`.
     # Per-kingdom: rarefy -> relative abundance -> (m)CLR within its own
     # composition (so the CLR's geometric-mean reference stays coherent and the
     # different sequencing depths don't contaminate each other), optionally
@@ -34,8 +36,10 @@ def cooccurrence(
     # Columns are prefixed with the kingdom (e.g. "Fungi:species_x") so each
     # node's origin is explicit in the resulting graph.
     kingdom_frames = []
-    for type_label in type_labels:
-        df_abs = rarefied_taxa_table(type_label, years, habitats, beneficials, crops)
+    for type_label, taxonomy in kingdoms.items():
+        df_abs = rarefied_taxa_table(
+            type_label, taxonomy, years, habitats, beneficials, crops
+        )
         df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
         if USE_MCLR:
             df_rel = mclr(df_rel, c=MCLR_C)
@@ -53,20 +57,23 @@ def main():
     print("| CO-OCCURRENCE |")
     print("-----------------")
 
+    kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
+    crops = ["Winter wheat 1", "Winter wheat 2"]
+
     graph_1 = cooccurrence(
-        ["Fungi", "Bacteria"],
+        kingdoms,
         "cooccurrence--",
         years=2019,
         habitats="Field_Soil",
-        crops=["Winter wheat 1", "Winter wheat 2"],
+        crops=crops,
     )
 
     graph_2 = cooccurrence(
-        ["Fungi", "Bacteria"],
+        kingdoms,
         "cooccurrence--",
         years=2019,
         habitats="Rhizosphere",
-        crops=["Winter wheat 1", "Winter wheat 2"],
+        crops=crops,
     )
 
     print(graph_1)

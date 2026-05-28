@@ -9,7 +9,6 @@ from _utils import (
     EXPERIMENT_COLUMNS,
     pivot,
     resolve_filter,
-    taxonomy_level,
 )
 
 
@@ -149,8 +148,7 @@ def prepare_fungi():
     df_beneficial = pd.read_csv("../lte_westerfeld.V1_0_BENEFICIAL.csv")
     df_bioproject = pd.read_csv("../lte_westerfeld.V1_0_BIOPROJECT.csv")
     df_habitat = pd.read_csv("../lte_westerfeld.V1_0_HABITAT.csv")
-    dtypes = {"Seq_ID": "str", "ACC_Num": "str"}
-    df_fungi = pd.read_csv("../lte_westerfeld.V1_0_FUNGI.csv", dtype=dtypes)
+    df_fungi = pd.read_csv("../lte_westerfeld.V1_0_FUNGI.csv")
 
     # Add BENEFICIAL information
     df_fungi = pd.merge(
@@ -193,8 +191,7 @@ def prepare_bacteria():
     df_beneficial = pd.read_csv("../lte_westerfeld.V1_0_BENEFICIAL.csv")
     df_bioproject = pd.read_csv("../lte_westerfeld.V1_0_BIOPROJECT.csv")
     df_habitat = pd.read_csv("../lte_westerfeld.V1_0_HABITAT.csv")
-    dtypes = {"Seq_ID": "str", "ACC_Num": "str", "OTU_ID": "str"}
-    df_bacteria = pd.read_csv("../lte_westerfeld.V1_0_BACTERIA.csv", dtype=dtypes)
+    df_bacteria = pd.read_csv("../lte_westerfeld.V1_0_BACTERIA.csv")
 
     # Add BENEFICIAL information
     df_bacteria = pd.merge(
@@ -404,27 +401,31 @@ def common_preparation(
 
 
 def relative_abundances(
-    type_label, years=None, habitats=None, beneficials=None, crops=None
+    type_label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
     """
     Run the common preparation and turn it into a rarefied relative-abundance
     table (rows = samples, columns = taxa).
 
+    Parameters
+    ----------
+    type_label : str
+        Which kingdom dataset to load (e.g. "Fungi" or "Bacteria").
+    taxonomy : str
+        Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
+
     Returns
     -------
     df : pandas.DataFrame
-        The fully prepared long-format table.
+        Fully prepared long-format table.
     df_rel_taxa_abundances : pandas.DataFrame
         Relative abundances per taxon.
     community_size : int
         Minimum total absolute abundance across samples (the rarefaction depth).
-    columns_grouper : str
-        The taxonomy column used as the taxa axis.
     """
     df = common_preparation(type_label, years, habitats, beneficials, crops)
 
     index_grouper = EXPERIMENT_COLUMNS
-    columns_grouper = taxonomy_level(type_label)
 
     print("Get community size...", end="")
     df_abs_total_abundances = pivot(df, "Value_abs", index_grouper)
@@ -433,7 +434,7 @@ def relative_abundances(
     print(f"Community size: {community_size}")
 
     print("Calculate absolute abundances per taxa...", end="")
-    df_abs_taxa_abundances = pivot(df, "Value_abs", index_grouper, columns_grouper)
+    df_abs_taxa_abundances = pivot(df, "Value_abs", index_grouper, taxonomy)
     print("DONE")
 
     print("Perform normalization...", end="")
@@ -446,20 +447,16 @@ def relative_abundances(
     ).fillna(0)
     print("DONE")
 
-    return df, df_rel_taxa_abundances, community_size, columns_grouper
+    return df, df_rel_taxa_abundances, community_size
 
 
 def rarefied_taxa_table(
-    type_label, years=None, habitats=None, beneficials=None, crops=None
+    type_label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
-    """Per-kingdom building block: common preparation + pivot + rarify.
-    Rows = samples by EXPERIMENT_COLUMNS, columns = taxa, values = rarefied
-    absolute counts. Intended to be composed by analysis scripts (e.g. a
-    multi-kingdom merge inside ``cooccurrence``)."""
     df = common_preparation(type_label, years, habitats, beneficials, crops)
     df_abs = df.pivot_table(
         index=EXPERIMENT_COLUMNS,
-        columns=taxonomy_level(type_label),
+        columns=taxonomy,
         values="Value_abs",
         aggfunc="sum",
         fill_value=0,

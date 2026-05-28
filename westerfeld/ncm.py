@@ -56,9 +56,11 @@ def wilson_confidence_interval(p, n, alpha=0.05):
     return center - half_width, center + half_width
 
 
-def ncm(type_label, label, years=None, habitats=None, beneficials=None, crops=None):
-    _, df_rel_taxa_abundances, community_size, _ = relative_abundances(
-        type_label, years, habitats, beneficials, crops
+def ncm(
+    type_label, label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
+):
+    _, df_rel_taxa_abundances, community_size = relative_abundances(
+        type_label, taxonomy, years, habitats, beneficials, crops
     )
 
     print("Computing mean relative abundances and occurrence frequencies...", end="")
@@ -258,6 +260,7 @@ def main():
         result = ncm(
             "Fungi",
             habitat,
+            "Species",
             years=2019,
             habitats=habitat,
             beneficials="Control",

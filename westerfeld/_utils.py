@@ -46,13 +46,6 @@ def pivot(
     return df
 
 
-def taxonomy_level(type_label):
-    if type_label == "Fungi":
-        return "Species"
-    else:
-        return "Genus"
-
-
 def calc_iou(d1, d2):
     union = set(d1 + d2)
     intersect = np.intersect1d(d1, d2)
