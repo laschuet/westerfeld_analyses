@@ -35,9 +35,7 @@ def cooccurrence(
     # node's origin is explicit in the resulting graph.
     kingdom_frames = []
     for type_label in type_labels:
-        df_abs = rarefied_taxa_table(
-            type_label, years, habitats, beneficials, crops
-        )
+        df_abs = rarefied_taxa_table(type_label, years, habitats, beneficials, crops)
         df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
         if USE_MCLR:
             df_rel = mclr(df_rel, c=MCLR_C)
