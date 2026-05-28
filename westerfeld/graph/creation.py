@@ -96,20 +96,10 @@ class CorrelationGraph(GraphCreationMethod):
 
 
 class GlassoGraph(GraphCreationMethod):
-    def __init__(
-        self,
-        alphas=7,
-        max_iter=500,
-        inverse_variance_zero_threshold=1e-2,
-        as_partial_correlation=False,
-    ):
+    def __init__(self, alphas=7, max_iter=500, inverse_variance_zero_threshold=1e-2):
         self.alphas = alphas
         self.max_iter = max_iter
         self.inverse_variance_zero_threshold = inverse_variance_zero_threshold
-        # If True, edge weight stores the partial correlation
-        # (-theta_ij / sqrt(theta_ii * theta_jj), bounded in [-1, 1]) instead of
-        # the raw precision entry theta_ij
-        self.as_partial_correlation = as_partial_correlation
 
     def create_network(
         self,
@@ -131,34 +121,34 @@ class GlassoGraph(GraphCreationMethod):
         model.fit(X)
 
         # Edges come from the sparse precision matrix: a non-zero off-diagonal
-        # theta_ij encodes a direct (conditional) dependence between i and j. The
-        # edge weight is the raw precision entry by default; set
-        # `as_partial_correlation=True` to store the partial correlation instead.
-        precision = model.precision_
-        precision = np.where(
-            np.abs(precision) < self.inverse_variance_zero_threshold, 0, precision
+        # theta_ij encodes a direct (conditional) dependence between i and j.
+        # Keep the entries whose magnitude clears the threshold.
+        theta = model.precision_
+        sparse_theta = np.where(
+            np.abs(theta) < self.inverse_variance_zero_threshold, 0, theta
         )
-        self.plot_covariance_matrix(precision, "glasso_precision")
+        self.plot_covariance_matrix(sparse_theta, "glasso_precision")
 
-        if self.as_partial_correlation:
-            diag = np.sqrt(np.abs(np.diag(model.precision_)))
-            weight_matrix = -precision / np.outer(diag, diag)
-            np.fill_diagonal(weight_matrix, 1.0)
-        else:
-            weight_matrix = precision
+        # Edge weight is the partial correlation -theta_ij / sqrt(theta_ii *
+        # theta_jj): bounded in [-1, 1] and signed like the association (positive
+        # for a positive co-occurrence). Normalize by the precision diagonal,
+        # i.e. the true conditional variances, which the threshold never touches.
+        diag = np.sqrt(np.diag(theta))
+        partial_corr = -theta / np.outer(diag, diag)
 
-        prec_df = pd.DataFrame(precision, index=df.columns, columns=df.columns)
-        weight_df = pd.DataFrame(weight_matrix, index=df.columns, columns=df.columns)
+        sparse_df = pd.DataFrame(sparse_theta, index=df.columns, columns=df.columns)
+        weight_df = pd.DataFrame(partial_corr, index=df.columns, columns=df.columns)
 
         G = nx.Graph()
         for i, taxon_i in enumerate(df.columns):
             for j, taxon_j in enumerate(df.columns):
-                if i < j and prec_df.iloc[i, j] != 0:
+                if i < j and sparse_df.iloc[i, j] != 0:
+                    weight = weight_df.iloc[i, j]
                     G.add_edge(
                         taxon_i,
                         taxon_j,
-                        weight=weight_df.iloc[i, j],
-                        positive_association=prec_df.iloc[i, j] < 0,
+                        weight=weight,
+                        positive_association=weight > 0,
                     )
 
         if df_lookup is not None and df_relative is not None:
