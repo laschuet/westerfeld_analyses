@@ -1,20 +1,20 @@
 import pandas as pd
 
-from _preparation import rarefied_taxa_table, mclr
+from _preparation import relative_abundances, mclr
 
-from graph.comparison.utils import (
+from graph.comparison import (
     common_subgraph,
     compare_graph_metrics,
     compare_graphs_pairwise,
     find_similar_subgraphs,
     is_subgraph,
 )
-from graph.creation.correlation import CorrelationGraph
-from graph.creation.inference import GlassoGraph
+from graph.creation import CorrelationGraph, GlassoGraph
 
 
 def _scale_block(df, mode):
-    """Per-kingdom block scaling for the multi-kingdom merge.
+    """
+    Per-kingdom block scaling for the multi-kingdom merge.
 
     Modes:
       "none"   - off
@@ -56,10 +56,9 @@ def cooccurrence(
     # node's origin is explicit in the resulting graph.
     kingdom_frames = []
     for type_label, taxonomy in kingdoms.items():
-        df_abs = rarefied_taxa_table(
+        df_rel, _ = relative_abundances(
             type_label, taxonomy, years, habitats, beneficials, crops
         )
-        df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
         if use_mclr:
             df_rel = mclr(df_rel, c=mclr_c)
         df_rel = _scale_block(df_rel, block_scale)
@@ -116,8 +115,7 @@ def main():
 
     cs = common_subgraph(graph_1, graph_2)
     print(
-        f"\nCommon subgraph: {cs.number_of_nodes()} nodes, "
-        f"{cs.number_of_edges()} edges"
+        f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"
     )
     print(f"Graph_1 is subgraph of graph_2: {is_subgraph(graph_1, graph_2)}")
     print(f"Graph_2 is subgraph of graph_1: {is_subgraph(graph_2, graph_1)}")

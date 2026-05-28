@@ -59,7 +59,7 @@ def wilson_confidence_interval(p, n, alpha=0.05):
 def ncm(
     type_label, label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
-    _, df_rel_taxa_abundances, community_size = relative_abundances(
+    df_rel_taxa_abundances, community_size = relative_abundances(
         type_label, taxonomy, years, habitats, beneficials, crops
     )
 

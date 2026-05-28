@@ -3,9 +3,10 @@ import numpy as np
 import pandas as pd
 
 from grakel import ShortestPath, WeisfeilerLehman
+from grakel.kernels import Kernel
+from grakel.utils import graph_from_networkx
 
 from _utils import calc_iou
-from graph.comparison.kernels import graph_kernel
 
 
 def graph_metrics(G: nx.Graph) -> dict:
@@ -140,6 +141,20 @@ def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.G
     if n != -1:
         return structures[-n:]
     return structures
+
+
+def _grakel_graph(G: nx.Graph, attribute=None):
+    if attribute is None:
+        # Inject node names as dummy labels so grakel has something to work with
+        G = G.copy()
+        nx.set_node_attributes(G, {n: {"label": str(n)} for n in G.nodes})
+        attribute = "label"
+    return next(graph_from_networkx([G], node_labels_tag=attribute))
+
+
+def graph_kernel(graphs: list[nx.Graph], kernel: Kernel, label=None):
+    grakel_graphs = [_grakel_graph(g, attribute=label) for g in graphs]
+    return kernel.fit_transform(grakel_graphs)
 
 
 def _iou_nodes(g1, g2):

@@ -118,7 +118,9 @@ def taxa_prediction(
     min_prevalence=0.7,
     presence_band=(0.25, 0.75),
 ):
-    _, df, _ = relative_abundances(type_label, taxonomy, years, habitats, beneficials, crops)
+    df, _ = relative_abundances(
+        type_label, taxonomy, years, habitats, beneficials, crops
+    )
 
     prevalence = (df > 0).mean(axis=0)
     presence = (df > 0).astype(int)
