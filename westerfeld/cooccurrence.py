@@ -1,6 +1,11 @@
 import pandas as pd
 
-from _preparation import mclr, rarefied_taxa_table, relative_abundances
+from _preparation import (
+    common_preparation,
+    mclr,
+    rarefied_taxa_table,
+    relative_abundances,
+)
 
 from graph.comparison import (
     common_subgraph,
@@ -56,9 +61,8 @@ def cooccurrence(
     # node's origin is explicit in the resulting graph.
     kingdom_frames = []
     for kingdom, taxonomy in kingdoms.items():
-        df_abs = rarefied_taxa_table(
-            kingdom, taxonomy, years, habitats, beneficials, crops
-        )
+        df_long = common_preparation(kingdom, years, habitats, beneficials, crops)
+        df_abs = rarefied_taxa_table(df_long, taxonomy)
         df_rel = relative_abundances(df_abs)
         if use_mclr:
             df_rel = mclr(df_rel, pseudocount=mclr_pseudocount)

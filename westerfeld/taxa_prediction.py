@@ -8,6 +8,7 @@ from sklearn.metrics import r2_score, roc_auc_score
 from sklearn.model_selection import KFold
 
 from _preparation import (
+    common_preparation,
     filter_prevalence,
     mclr,
     rarefied_taxa_table,
@@ -123,9 +124,8 @@ def taxa_prediction(
     min_prevalence=0.7,
     presence_band=(0.25, 0.75),
 ):
-    df_abs = rarefied_taxa_table(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
+    df_long = common_preparation(type_label, years, habitats, beneficials, crops)
+    df_abs = rarefied_taxa_table(df_long, taxonomy)
     df = relative_abundances(df_abs)
 
     prevalence = (df > 0).mean(axis=0)

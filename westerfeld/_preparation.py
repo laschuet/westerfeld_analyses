@@ -419,29 +419,41 @@ def common_preparation(
     return df
 
 
-def rarefied_taxa_table(
-    kingdom, taxonomy, years=None, habitats=None, beneficials=None, crops=None
-):
+def taxa_table(df, taxonomy):
     """
-    Run the common preparation and pivot it into a wide, rarefied table of
-    absolute abundances (rows = samples, columns = taxa).
+    Pivot the long table into a wide table of absolute abundances
+    (rows = samples, columns = taxa) aggregated at the given taxonomy level.
 
     Parameters
     ----------
-    kingdom : str
-        Which kingdom dataset to load (e.g. "Fungi" or "Bacteria").
+    df : pandas.DataFrame
+        Long table (as returned by `common_preparation`).
     taxonomy : str
         Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
     """
-    df = common_preparation(kingdom, years, habitats, beneficials, crops)
-    df = df.pivot_table(
+    return df.pivot_table(
         index=EXPERIMENT_COLUMNS,
         columns=taxonomy,
         values="Value_abs",
         aggfunc="sum",
         fill_value=0,
     )
-    return rarefy(df)
+
+
+def rarefied_taxa_table(df, taxonomy):
+    """
+    Pivot the long table into a wide table of absolute abundances
+    (rows = samples, columns = taxa) aggregated at the given taxonomy level,
+    and rarefy it to a common read depth.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Long table (as returned by `common_preparation`).
+    taxonomy : str
+        Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
+    """
+    return rarefy(taxa_table(df, taxonomy))
 
 
 def relative_abundances(df):

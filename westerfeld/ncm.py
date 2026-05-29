@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from lmfit import Parameters, Model
 
-from _preparation import rarefied_taxa_table, relative_abundances
+from _preparation import common_preparation, rarefied_taxa_table, relative_abundances
 from _utils import calc_iou
 
 
@@ -59,9 +59,8 @@ def wilson_confidence_interval(p, n, alpha=0.05):
 def ncm(
     type_label, label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
-    df_abs = rarefied_taxa_table(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
+    df_long = common_preparation(type_label, years, habitats, beneficials, crops)
+    df_abs = rarefied_taxa_table(df_long, taxonomy)
     community_size = int(df_abs.sum(axis=1).min())
     print(f"Community size: {community_size}")
     df_rel_taxa_abundances = relative_abundances(df_abs)
