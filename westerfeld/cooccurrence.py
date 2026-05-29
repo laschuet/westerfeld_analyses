@@ -18,12 +18,12 @@ def _scale_block(df, mode):
 
     Modes:
       "none"   - off
-      "zscore" - per-column standardisation (mean 0, std 1)
-      "center" - per-column centring (mean 0, variances preserved)
+      "zscore" - per-column standardization (mean 0, std 1)
+      "center" - per-column centering (mean 0, variances preserved)
       "block"  - divide each column by the kingdom's average std
-                 (between-kingdom variances equalised, within-kingdom ratios preserved)
+                 (between-kingdom variances equalized, within-kingdom ratios preserved)
     """
-    if mode in (None, "none"):
+    if mode is None:
         return df
     if mode == "zscore":
         return (df - df.mean()) / df.std(ddof=0).replace(0, 1)
@@ -43,26 +43,26 @@ def cooccurrence(
     beneficials=None,
     crops=None,
     use_mclr=True,
-    mclr_c=1,
-    block_scale="none",
+    mclr_pseudocount=1,
+    block_scale=None,
 ):
     # `kingdoms` maps each kingdom to the taxonomy level to
     # aggregate it at, e.g. `{"Fungi": "Species", "Bacteria": "Genus"}`.
-    # Per-kingdom: rarefy -> relative abundance -> (m)CLR within its own
-    # composition (so the CLR's geometric-mean reference stays coherent and the
+    # Per-kingdom: rarefy -> relative abundance -> mCLR within its own
+    # composition (so the mCLR's geometric-mean reference stays coherent and the
     # different sequencing depths don't contaminate each other), optionally
     # block-scale, then inner-join the per-kingdom frames on the sample axis.
     # Columns are prefixed with the kingdom (e.g. "Fungi:species_x") so each
     # node's origin is explicit in the resulting graph.
     kingdom_frames = []
-    for type_label, taxonomy in kingdoms.items():
+    for kingdom, taxonomy in kingdoms.items():
         df_rel, _ = relative_abundances(
-            type_label, taxonomy, years, habitats, beneficials, crops
+            kingdom, taxonomy, years, habitats, beneficials, crops
         )
         if use_mclr:
-            df_rel = mclr(df_rel, c=mclr_c)
+            df_rel = mclr(df_rel, pseudocount=mclr_pseudocount)
         df_rel = _scale_block(df_rel, block_scale)
-        df_rel.columns = [f"{type_label}:{taxon}" for taxon in df_rel.columns]
+        df_rel.columns = [f"{kingdom}:{taxon}" for taxon in df_rel.columns]
         kingdom_frames.append(df_rel)
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
 

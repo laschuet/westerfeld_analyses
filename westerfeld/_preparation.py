@@ -287,9 +287,9 @@ def precrop(row):
         return "Winter barley"
 
 
-def rarify(df, sample_total=0):
+def rarefy(df, sample_total=0):
     """
-    Perform normalization.
+    Perform rarefaction.
 
     Parameters
     ----------
@@ -330,10 +330,10 @@ def rarify(df, sample_total=0):
 
 
 def common_preparation(
-    type_label, years=None, habitats=None, beneficials=None, crops=None
+    kingdom, years=None, habitats=None, beneficials=None, crops=None
 ):
     print("Join all related tables and keep important columns only...", end="")
-    if type_label == "Fungi":
+    if kingdom == "Fungi":
         df = prepare_fungi()
         drop_columns = [
             "Fungi_ID",
@@ -357,7 +357,7 @@ def common_preparation(
     df = df.drop(columns=drop_columns)
     print("DONE")
 
-    if type_label == "Bacteria":
+    if kingdom == "Bacteria":
         print("Fix a wrong taxonomic ranking...")
         df.loc[df["Order"] == "Burkholderiales", "Class"] = "Betaproteobacteria"
         print("DONE")
@@ -420,7 +420,7 @@ def common_preparation(
 
 
 def rarefied_taxa_table(
-    type_label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
+    kingdom, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
     """
     Run the common preparation and pivot it into a wide, rarefied table of
@@ -428,12 +428,12 @@ def rarefied_taxa_table(
 
     Parameters
     ----------
-    type_label : str
+    kingdom : str
         Which kingdom dataset to load (e.g. "Fungi" or "Bacteria").
     taxonomy : str
         Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
     """
-    df = common_preparation(type_label, years, habitats, beneficials, crops)
+    df = common_preparation(kingdom, years, habitats, beneficials, crops)
     df_abs = df.pivot_table(
         index=EXPERIMENT_COLUMNS,
         columns=taxonomy,
@@ -441,11 +441,11 @@ def rarefied_taxa_table(
         aggfunc="sum",
         fill_value=0,
     )
-    return rarify(df_abs)
+    return rarefy(df_abs)
 
 
 def relative_abundances(
-    type_label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
+    kingdom, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
     """
     Rarefied relative-abundance table plus the rarefaction depth.
@@ -457,9 +457,7 @@ def relative_abundances(
     community_size : int
         Per-sample read depth after rarefaction (the smallest sample total).
     """
-    df_abs = rarefied_taxa_table(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
+    df_abs = rarefied_taxa_table(kingdom, taxonomy, years, habitats, beneficials, crops)
     community_size = int(df_abs.sum(axis=1).min())
     print(f"Community size: {community_size}")
     df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
@@ -467,12 +465,12 @@ def relative_abundances(
 
 
 def filter_prevalence(df, min_prevalence):
-    """Keep taxa (columns) present in at least min_prevalence of the samples."""
+    """Keep taxa (columns) present in at least `min_prevalence` of the samples."""
     prevalence = (df > 0).mean(axis=0)
     return df.loc[:, prevalence >= min_prevalence]
 
 
-def mclr(df, c=1):
+def mclr(df, pseudocount=1):
     """
     Modified centered log-ratio transform (rows = samples, columns = taxa).
 
@@ -484,7 +482,7 @@ def mclr(df, c=1):
         non_zero_elements = row[row > 0]
         geometric_mean = gmean(non_zero_elements)
         row = row.apply(lambda x: math.log10(x / geometric_mean) if x != 0 else 0)
-        epsilon = abs(row[row != 0].min()) + c
+        epsilon = abs(row[row != 0].min()) + pseudocount
         row = row.apply(lambda x: (x + epsilon) if x != 0 else 0)
         transformed.loc[index] = row
     return transformed
