@@ -167,7 +167,7 @@ def prepare_fungi():
     df_beneficial = pd.read_csv("../lte_westerfeld.V1_0_BENEFICIAL.csv")
     df_bioproject = pd.read_csv("../lte_westerfeld.V1_0_BIOPROJECT.csv")
     df_habitat = pd.read_csv("../lte_westerfeld.V1_0_HABITAT.csv")
-    df_fungi = pd.read_csv("../lte_westerfeld.V1_0_FUNGI.csv")
+    df_fungi = pd.read_csv("../lte_westerfeld.V1_0_FUNGI.csv", low_memory=False)
 
     # Add BENEFICIAL information
     df_fungi = pd.merge(
@@ -210,7 +210,7 @@ def prepare_bacteria():
     df_beneficial = pd.read_csv("../lte_westerfeld.V1_0_BENEFICIAL.csv")
     df_bioproject = pd.read_csv("../lte_westerfeld.V1_0_BIOPROJECT.csv")
     df_habitat = pd.read_csv("../lte_westerfeld.V1_0_HABITAT.csv")
-    df_bacteria = pd.read_csv("../lte_westerfeld.V1_0_BACTERIA.csv")
+    df_bacteria = pd.read_csv("../lte_westerfeld.V1_0_BACTERIA.csv", low_memory=False)
 
     # Add BENEFICIAL information
     df_bacteria = pd.merge(

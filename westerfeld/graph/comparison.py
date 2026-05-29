@@ -29,6 +29,7 @@ def graph_metrics(G: nx.Graph) -> dict:
             "diameter": float("nan"),
             "avg_shortest_path": float("nan"),
             "avg_clustering": 0.0,
+            "modularity": -1.0,
         }
 
     degrees = [d for _, d in G.degree()]
@@ -45,6 +46,9 @@ def graph_metrics(G: nx.Graph) -> dict:
         "diameter": nx.diameter(H),
         "avg_shortest_path": nx.average_shortest_path_length(H),
         "avg_clustering": nx.average_clustering(G),
+        "modularity": nx.community.modularity(
+            G, nx.community.label_propagation_communities(G)
+        ),
     }
 
 
@@ -85,9 +89,8 @@ def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
 
 def _graph_equal(g1: nx.Graph, g2: nx.Graph) -> bool:
     """Equal iff the node sets and (unordered) edge sets match."""
-    return (
-        set(g1.nodes) == set(g2.nodes)
-        and _canonical_edges(g1) == _canonical_edges(g2)
+    return set(g1.nodes) == set(g2.nodes) and _canonical_edges(g1) == _canonical_edges(
+        g2
     )
 
 
