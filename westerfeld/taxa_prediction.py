@@ -206,10 +206,9 @@ def main():
 
     result = taxa_prediction(
         "Fungi",
-        "Species",
+        "Genus",
         years=2019,
         habitats="Field_Soil",
-        beneficials="Control",
         runs=64,
     )
 

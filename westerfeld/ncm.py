@@ -254,18 +254,17 @@ def main():
     print("| NEUTRAL COMMUNITY MODEL |")
     print("---------------------------")
 
-    crops = ["Grain maize", "Winter wheat 1", "Winter wheat 2"]
+    crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
 
     results = []
     for habitat in habitats:
         result = ncm(
-            "Fungi",
+            "Bacteria",
             habitat,
-            "Species",
+            "Genus",
             years=2019,
             habitats=habitat,
-            beneficials="Control",
             crops=crops,
         )
         export_taxa_bounds(result, path=f"taxa_bounds_{habitat}.xlsx")
@@ -277,7 +276,7 @@ def main():
     print(summary)
     summary.to_csv("ncm_summary.csv")
 
-    for partition in ("above", "below"):
+    for partition in ("above", "below", "neutral"):
         overlap = compare_ncm_partitions(results, partition)
         print(overlap)
         overlap.to_csv(f"ncm_overlap_{partition}.csv")
