@@ -434,14 +434,14 @@ def rarefied_taxa_table(
         Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
     """
     df = common_preparation(kingdom, years, habitats, beneficials, crops)
-    df_abs = df.pivot_table(
+    df = df.pivot_table(
         index=EXPERIMENT_COLUMNS,
         columns=taxonomy,
         values="Value_abs",
         aggfunc="sum",
         fill_value=0,
     )
-    return rarefy(df_abs)
+    return rarefy(df)
 
 
 def relative_abundances(df):
