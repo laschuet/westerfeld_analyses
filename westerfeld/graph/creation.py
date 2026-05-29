@@ -1,3 +1,5 @@
+# import warnings
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -39,6 +41,10 @@ def _annotate_niche(G, df_lookup, df_relative):
 
 
 class CorrelationGraph(GraphCreationMethod):
+    # Pairwise correlations are well-defined for any number of taxa, so no
+    # prevalence filtering is required.
+    min_prevalence = None
+
     def __init__(self, coefficient="spearman", threshold=0.68):
         self.coefficient = coefficient
         self.threshold = threshold
@@ -94,8 +100,22 @@ class CorrelationGraph(GraphCreationMethod):
 
 
 class GlassoGraph(GraphCreationMethod):
-    def __init__(self, alphas=7, max_iter=500, inverse_variance_zero_threshold=1e-2):
-        self.alphas = alphas
+    # Graphical Lasso inverts the taxa covariance, which is singular when there
+    # are far more taxa than samples (m >> n). The empirical covariance has rank
+    # <= n, so with ~1000 taxa and ~30 samples no L1 penalty can recover a usable
+    # precision matrix: the solver divides by collapsed diagonal entries (a wall
+    # of RuntimeWarnings) and ultimately raises a FloatingPointError. Restricting
+    # to prevalent taxa brings m/n down to a regime the solver can handle.
+    min_prevalence = 0.8
+
+    def __init__(
+        self, alphas=None, max_iter=1000, inverse_variance_zero_threshold=1e-2
+    ):
+        # An explicit, strictly positive alpha grid. Passing an integer instead
+        # lets GraphicalLassoCV auto-build a grid that reaches near-zero
+        # penalties, which try to invert the (near-)singular covariance and blow
+        # up, so a positive floor keeps every candidate penalty regularizing.
+        self.alphas = alphas if alphas is not None else [0.4, 0.6, 0.8, 1.0]
         self.max_iter = max_iter
         self.inverse_variance_zero_threshold = inverse_variance_zero_threshold
 
@@ -116,6 +136,14 @@ class GlassoGraph(GraphCreationMethod):
         model = GraphicalLassoCV(
             alphas=self.alphas, max_iter=self.max_iter, verbose=True, n_jobs=-1
         )
+        # On a high-dimensional covariance, the CV grid search briefly probes
+        # penalties that are still mildly ill-conditioned, emitting transient
+        # divide-by-zero / invalid-value RuntimeWarnings even when the final fit
+        # is fine. Silence just those; a genuinely unusable result is caught
+        # below by the precision-diagonal guard.
+        # with warnings.catch_warnings():
+        #     warnings.filterwarnings("ignore", category=RuntimeWarning)
+        #     model.fit(X)
         model.fit(X)
 
         # Edges come from the sparse precision matrix: a non-zero off-diagonal
@@ -131,7 +159,16 @@ class GlassoGraph(GraphCreationMethod):
         # theta_jj): bounded in [-1, 1] and signed like the association (positive
         # for a positive co-occurrence). Normalize by the precision diagonal,
         # i.e. the true conditional variances, which the threshold never touches.
-        diag = np.sqrt(np.diag(theta))
+        # A well-conditioned precision has a strictly positive diagonal; guard
+        # against any non-positive entry so the division can't emit NaN/inf.
+        diag_values = np.diag(theta)
+        if np.any(diag_values <= 0):
+            raise FloatingPointError(
+                "Graphical Lasso returned a non-positive precision diagonal; "
+                "the covariance is too ill-conditioned (try a higher "
+                "min_prevalence or fewer taxa)."
+            )
+        diag = np.sqrt(diag_values)
         partial_corr = -theta / np.outer(diag, diag)
 
         sparse_df = pd.DataFrame(sparse_theta, index=df.columns, columns=df.columns)

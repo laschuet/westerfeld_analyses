@@ -2,6 +2,7 @@ import pandas as pd
 
 from _preparation import (
     common_preparation,
+    filter_prevalence,
     mclr,
     rarefied_taxa_table,
     relative_abundances,
@@ -59,11 +60,18 @@ def cooccurrence(
     # block-scale, then inner-join the per-kingdom frames on the sample axis.
     # Columns are prefixed with the kingdom (e.g. "Fungi:species_x") so each
     # node's origin is explicit in the resulting graph.
+    # Some graph creators (e.g. Graphical Lasso) cannot handle far more taxa
+    # than samples and ask for a prevalence filter via `min_prevalence`; others
+    # (e.g. correlation) leave it None and keep every taxon.
+    min_prevalence = getattr(graph_creator, "min_prevalence", None)
+
     kingdom_frames = []
     for kingdom, taxonomy in kingdoms.items():
         df_long = common_preparation(kingdom, years, habitats, beneficials, crops)
         df_abs = rarefied_taxa_table(df_long, taxonomy)
         df_rel = relative_abundances(df_abs)
+        if min_prevalence is not None:
+            df_rel = filter_prevalence(df_rel, min_prevalence)
         if use_mclr:
             df_rel = mclr(df_rel, pseudocount=mclr_pseudocount)
         df_rel = _scale_block(df_rel, block_scale)
@@ -81,8 +89,8 @@ def main():
 
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    graph_creator = CorrelationGraph()
-    # graph_creator = GlassoGraph()
+    # graph_creator = CorrelationGraph()
+    graph_creator = GlassoGraph()
 
     graph_1 = cooccurrence(
         kingdoms,
