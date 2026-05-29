@@ -444,24 +444,21 @@ def rarefied_taxa_table(
     return rarefy(df_abs)
 
 
-def relative_abundances(
-    kingdom, taxonomy, years=None, habitats=None, beneficials=None, crops=None
-):
+def relative_abundances(df):
     """
-    Rarefied relative-abundance table plus the rarefaction depth.
+    Convert absolute abundances into relative abundances.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Absolute abundances (rows = samples, columns = taxa).
 
     Returns
     -------
-    df_rel : pandas.DataFrame
-        Relative abundances per taxon (rows = samples, columns = taxa).
-    community_size : int
-        Per-sample read depth after rarefaction (the smallest sample total).
+    pandas.DataFrame
+        Relative abundances per taxon; each row sums to 1 (empty rows stay 0).
     """
-    df_abs = rarefied_taxa_table(kingdom, taxonomy, years, habitats, beneficials, crops)
-    community_size = int(df_abs.sum(axis=1).min())
-    print(f"Community size: {community_size}")
-    df_rel = df_abs.div(df_abs.sum(axis=1), axis=0).fillna(0)
-    return df_rel, community_size
+    return df.div(df.sum(axis=1), axis=0).fillna(0)
 
 
 def filter_prevalence(df, min_prevalence):
