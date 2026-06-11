@@ -218,6 +218,10 @@ def main():
     result.embedding.to_csv("ordination.csv")
     plot_ordination(result, "Habitat", path="ordination.jpg")
 
+    # To quantify the separation this plot shows (PERMANOVA) and check it is a
+    # location shift rather than unequal dispersion (PERMDISP), see
+    # beta_diversity.py, which runs on the same Bray-Curtis distances.
+
 
 if __name__ == "__main__":
     main()
