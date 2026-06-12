@@ -256,30 +256,31 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
+    type_label = "Fungi"
 
     results = []
     for habitat in habitats:
         result = ncm(
-            "Bacteria",
+            type_label,
             habitat,
-            "Genus",
+            "Species",
             years=2019,
             habitats=habitat,
             crops=crops,
         )
-        export_taxa_bounds(result, path=f"taxa_bounds_{habitat}.xlsx")
+        export_taxa_bounds(result, path=f"taxa_bounds_{type_label}_{habitat}.xlsx")
         results.append(result)
 
-    plot_ncm_grid(results, path="ncm.pdf")
+    plot_ncm_grid(results, path=f"ncm_{type_label}.pdf")
 
     summary = compare_ncm_results(results)
     print(summary)
-    summary.to_csv("ncm_summary.csv")
+    summary.to_csv(f"ncm_summary_{type_label}.csv")
 
     for partition in ("above", "below", "neutral"):
         overlap = compare_ncm_partitions(results, partition)
         print(overlap)
-        overlap.to_csv(f"ncm_overlap_{partition}.csv")
+        overlap.to_csv(f"ncm_overlap_{type_label}_{partition}.csv")
 
 
 if __name__ == "__main__":
