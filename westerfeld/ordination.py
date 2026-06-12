@@ -203,20 +203,21 @@ def main():
     print("--------------")
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
+    type_label = "Fungi"
 
     # If a good perplexity is unknown, scan first and inspect the plot.
-    scan = scan_perplexity("Fungi", "Genus", years=2019, crops=crops)
-    plot_perplexity_scan(scan, path="ordination_perplexity.jpg")
+    scan = scan_perplexity(type_label, "Species", years=2019, crops=crops)
+    plot_perplexity_scan(scan, path=f"ordination_perplexity_{type_label}.jpg")
 
     result = ordination(
-        "Fungi",
-        "Genus",
-        perplexity=30,
+        type_label,
+        "Species",
+        perplexity=25,
         years=2019,
         crops=crops,
     )
-    result.embedding.to_csv("ordination.csv")
-    plot_ordination(result, "Habitat", path="ordination.jpg")
+    result.embedding.to_csv(f"ordination_{type_label}.csv")
+    plot_ordination(result, "Habitat", path=f"ordination_{type_label}.jpg")
 
     # To quantify the separation this plot shows (PERMANOVA) and check it is a
     # location shift rather than unequal dispersion (PERMDISP), see
