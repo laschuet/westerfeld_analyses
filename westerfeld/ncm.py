@@ -23,8 +23,6 @@ class NCMResult:
     best_fit: np.ndarray
     low_bound: np.ndarray
     high_bound: np.ndarray
-    lower: np.ndarray
-    upper: np.ndarray
     rsquared: float
     N: float
     m: float
@@ -105,10 +103,6 @@ def ncm(
     best_fit = ncm_result.best_fit
 
     low_bound, high_bound = wilson_confidence_interval(best_fit, n_samples)
-
-    uncertainty = ncm_result.eval_uncertainty(sigma=2)
-    lower = best_fit - uncertainty
-    upper = best_fit + uncertainty
     print("DONE")
 
     return NCMResult(
@@ -120,8 +114,6 @@ def ncm(
         best_fit=best_fit,
         low_bound=low_bound,
         high_bound=high_bound,
-        lower=lower,
-        upper=upper,
         rsquared=ncm_result.rsquared,
         N=N,
         m=m,
@@ -140,10 +132,6 @@ def plot_ncm(result, ax):
     ax.plot(x, result.low_bound, color="#E72F52", linewidth=1, linestyle="--")
     ax.plot(x, result.high_bound, color="#E72F52", linewidth=1, linestyle="--")
     ax.fill_between(x, result.low_bound, result.high_bound, color="#B5BABB")
-
-    ax.plot(x, result.lower, color="#0D18B3", linewidth=1, linestyle="--")
-    ax.plot(x, result.upper, color="#0D18B3", linewidth=1, linestyle="--")
-    ax.fill_between(x, result.lower, result.upper, color="#7EE7FC")
 
     below = y < result.low_bound
     above = y > result.high_bound
@@ -256,30 +244,31 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
+    type_label = "Bacteria"
 
     results = []
     for habitat in habitats:
         result = ncm(
-            "Bacteria",
+            type_label,
             habitat,
             "Genus",
             years=2019,
             habitats=habitat,
             crops=crops,
         )
-        export_taxa_bounds(result, path=f"taxa_bounds_{habitat}.xlsx")
+        export_taxa_bounds(result, path=f"taxa_bounds_{type_label}_{habitat}.xlsx")
         results.append(result)
 
-    plot_ncm_grid(results, path="ncm.pdf")
+    plot_ncm_grid(results, path=f"ncm_{type_label}.pdf")
 
     summary = compare_ncm_results(results)
     print(summary)
-    summary.to_csv("ncm_summary.csv")
+    summary.to_csv(f"ncm_summary_{type_label}.csv")
 
     for partition in ("above", "below", "neutral"):
         overlap = compare_ncm_partitions(results, partition)
         print(overlap)
-        overlap.to_csv(f"ncm_overlap_{partition}.csv")
+        overlap.to_csv(f"ncm_overlap_{type_label}_{partition}.csv")
 
 
 if __name__ == "__main__":
