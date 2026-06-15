@@ -375,10 +375,6 @@ def common_preparation(
     df = df[df["Date"].dt.month != 11]
     print("DONE")
 
-    print("Exclude Winter rapeseed...", end="")
-    df = df[df["Crop"] != "Winter rapeseed"]
-    print("DONE")
-
     print("Remove singletons...", end="")
     df = df[df["Value_abs"] > 1]
     print("DONE")
