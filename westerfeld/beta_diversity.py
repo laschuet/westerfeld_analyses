@@ -110,15 +110,17 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
 
-    for type_label in ("Fungi", "Bacteria"):
-        # Does composition differ by habitat, and is it a location shift rather
-        # than unequal within-group dispersion?
-        print(permanova(type_label, "Genus", "Habitat", years=2019, crops=crops))
-        print(
-            permdisp(
-                type_label, "Genus", "Habitat", years=2019, crops=crops, test="centroid"
-            )
-        )
+    print("\n=== FUNGI ===")
+    print("PERMANOVA:")
+    print(permanova("Fungi", "Species", "Habitat", years=2019, crops=crops))
+    print("\nPERMDISP:")
+    print(permdisp("Fungi", "Species", "Habitat", years=2019, crops=crops, test="centroid"))
+
+    print("\n=== BACTERIA ===")
+    print("PERMANOVA:")
+    print(permanova("Bacteria", "Genus", "Habitat", years=2019, crops=crops))
+    print("\nPERMDISP:")
+    print(permdisp("Bacteria", "Genus", "Habitat", years=2019, crops=crops, test="centroid"))
 
 
 if __name__ == "__main__":
