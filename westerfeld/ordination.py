@@ -156,8 +156,8 @@ def plot_ordination(result, color_by, marker_by=None, path="ordination.jpg"):
 
     fig, ax = plt.subplots()
     ax.set_title(
-        f"t-SNE of {result.type_label} abundances "
-        f"(n={len(x)}, perplexity={result.perplexity}, "
+        f"t-SNE of {result.type_label} abundances\n"
+        f"(n={len(x)}, perplexity={result.perplexity},\n"
         rf"$D_{{KL}}$={result.kl_divergence:.4f}, "
         f"trustworthiness={result.trustworthiness:.4f})"
     )
@@ -203,20 +203,21 @@ def main():
     print("--------------")
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
+    type_label = "Bacteria"
 
     # If a good perplexity is unknown, scan first and inspect the plot.
-    scan = scan_perplexity("Fungi", "Genus", years=2019, crops=crops)
-    plot_perplexity_scan(scan, path="ordination_perplexity.jpg")
+    scan = scan_perplexity(type_label, "Genus", years=2019, crops=crops)
+    plot_perplexity_scan(scan, path=f"ordination_perplexity_{type_label}.jpg")
 
     result = ordination(
-        "Fungi",
+        type_label,
         "Genus",
-        perplexity=30,
+        perplexity=15,
         years=2019,
         crops=crops,
     )
-    result.embedding.to_csv("ordination.csv")
-    plot_ordination(result, "Habitat", path="ordination.jpg")
+    result.embedding.to_csv(f"ordination_{type_label}.csv")
+    plot_ordination(result, "Habitat", "Crop", path=f"ordination_{type_label}.jpg")
 
     # To quantify the separation this plot shows (PERMANOVA) and check it is a
     # location shift rather than unequal dispersion (PERMDISP), see
