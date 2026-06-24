@@ -190,14 +190,36 @@ def export_taxa_bounds(result, path="taxa_bounds.xlsx"):
     print("Analyze taxa...", end="")
     taxa_low, taxa_high, taxa_neutral = taxa_bounds(result)
 
-    df_low = pd.DataFrame(taxa_low, columns=["Low Bound Taxa"])
-    df_high = pd.DataFrame(taxa_high, columns=["High Bound Taxa"])
-    df_neutral = pd.DataFrame(taxa_neutral, columns=["Neutral Taxa"])
+    y = result.y
+    below = y < result.low_bound
+    above = y > result.high_bound
+    neutral = (y >= result.low_bound) & (y <= result.high_bound)    
+
+    df_low = pd.DataFrame({
+        "Taxa": taxa_low,
+        "Mean Relative Abundance": result.x[below],
+        "Occurrence Frequency": result.y[below]
+    })
+    df_low["Prediction"] = "below prediction"
+
+    df_high = pd.DataFrame({
+        "Taxa": taxa_high,
+        "Mean Relative Abundance": result.x[above],
+        "Occurrence Frequency": result.y[above]
+    })
+    df_high["Prediction"] = "above prediction"
+
+    df_neutral = pd.DataFrame({
+        "Taxa": taxa_neutral,
+        "Mean Relative Abundance": result.x[neutral],
+        "Occurrence Frequency": result.y[neutral]
+    })
+    df_neutral["Prediction"] = "neutral"
+
+    df = pd.concat([df_low, df_high, df_neutral], ignore_index=True)
 
     with pd.ExcelWriter(path) as writer:
-        df_low.to_excel(writer, sheet_name="Low Bound", index=False)
-        df_high.to_excel(writer, sheet_name="High Bound", index=False)
-        df_neutral.to_excel(writer, sheet_name="Neutral", index=False)
+        df.to_excel(writer, sheet_name="Taxa Bounds", index=False)
     print("DONE")
 
 
@@ -244,7 +266,7 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
-    type_label = "Bacteria"
+    type_label = "Fungi"
 
     results = []
     for habitat in habitats:
