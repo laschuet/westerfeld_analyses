@@ -266,7 +266,7 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
-    type_label = "Fungi"
+    type_label = "Bacteria"
 
     results = []
     for habitat in habitats:
