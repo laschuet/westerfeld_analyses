@@ -147,6 +147,14 @@ def compare_graphs_pairwise_edge_type_iou(
     )
 
 
+def compare_graphs_pairwise_node_type_iou(
+    graphs: list[nx.Graph], labels: list[str], kingdom: str
+) -> pd.DataFrame:
+    return compare_graphs_pairwise(
+        graphs, labels, "nodes_iou", pair_type=kingdom
+    )
+
+
 def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.DataFrame:
     """Summarize edge-type-specific subgraphs.
 
@@ -302,7 +310,17 @@ def graph_kernel(graphs: list[nx.Graph], kernel: Kernel, label=None):
     return kernel.fit_transform(grakel_graphs)
 
 
-def _iou_nodes(g1, g2):
+def _filter_graph_by_node_kingdom(G: nx.Graph, kingdom: str | None) -> nx.Graph:
+    if kingdom is None:
+        return G
+    return graph_subgraph_by_node_kingdom(G, kingdom)
+
+
+def _iou_nodes(g1, g2, pair_type: str | None = None):
+    if pair_type is None:
+        return calc_iou(list(g1.nodes), list(g2.nodes))
+    g1 = _filter_graph_by_node_kingdom(g1, pair_type)
+    g2 = _filter_graph_by_node_kingdom(g2, pair_type)
     return calc_iou(list(g1.nodes), list(g2.nodes))
 
 
@@ -357,8 +375,14 @@ def compare_graphs_pairwise(
       - `pair_type='Bacteria-Bacteria'`
       - `pair_type='Fungi-Bacteria'`
 
+    For `nodes_iou`, `pair_type` can be used to restrict the comparison to a
+    specific kingdom's node set:
+
+      - `pair_type='Fungi'`
+      - `pair_type='Bacteria'`
+
     The matrix itself does not label the selected pair type; it only computes
-    the requested metric on the filtered edge set.
+    the requested metric on the filtered node or edge set.
     """
     if metric not in _METRICS:
         raise ValueError(f"Unknown metric: {metric} (available: {sorted(_METRICS)})")
@@ -366,12 +390,12 @@ def compare_graphs_pairwise(
     matrix = pd.DataFrame(index=labels, columns=labels, dtype=float)
     for i, gi in enumerate(graphs):
         for j, gj in enumerate(graphs):
-            if metric == "edges_iou":
+            if metric in {"edges_iou", "nodes_iou"}:
                 matrix.iloc[i, j] = fn(gi, gj, pair_type=pair_type, **metric_kwargs)
             else:
                 if pair_type is not None:
                     raise ValueError(
-                        "pair_type is only supported for metric 'edges_iou'"
+                        "pair_type is only supported for metrics 'edges_iou' and 'nodes_iou'"
                     )
                 matrix.iloc[i, j] = fn(gi, gj, **metric_kwargs)
     return matrix

@@ -141,6 +141,11 @@ def main():
     print("\nPairwise edges_iou for Fungi-Bacteria edges")
     print(compare_graphs_pairwise(graphs, labels, "edges_iou", pair_type="Fungi-Bacteria"))
 
+    print("\nPairwise nodes_iou for Fungi nodes")
+    print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Fungi"))
+    print("\nPairwise nodes_iou for Bacteria nodes")
+    print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Bacteria"))
+
     cs = common_subgraph(graph_1, graph_2)
     print(
         f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"
