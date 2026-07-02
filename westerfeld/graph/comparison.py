@@ -216,7 +216,8 @@ def plot_graphs_side_by_side(
         )
 
         ax.set_title(label)
-        ax.set_axis_off()
+        ax.set_axis_on()
+        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
     legend_handles = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
