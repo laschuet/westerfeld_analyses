@@ -103,6 +103,26 @@ def graph_metrics_by_edge_type(G: nx.Graph, edge_type: str) -> dict:
     return graph_metrics(graph_subgraph_by_edge_kingdom(G, edge_type))
 
 
+def _edge_type_edges(G: nx.Graph, edge_type: str | None) -> set[tuple]:
+    return {
+        tuple(sorted((u, v)))
+        for u, v in G.edges()
+        if edge_kingdom_type(G, u, v) == edge_type
+    }
+
+
+def shared_edges_by_type(G1: nx.Graph, G2: nx.Graph, edge_type: str) -> list:
+    return sorted(_edge_type_edges(G1, edge_type) & _edge_type_edges(G2, edge_type))
+
+
+def compare_graphs_pairwise_edge_type_iou(
+    graphs: list[nx.Graph], labels: list[str], edge_type: str
+) -> pd.DataFrame:
+    return compare_graphs_pairwise(
+        graphs, labels, "edges_iou", pair_type=edge_type
+    )
+
+
 def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.DataFrame:
     """Summarize edge-type-specific subgraphs.
 
@@ -262,7 +282,15 @@ def _iou_nodes(g1, g2):
     return calc_iou(list(g1.nodes), list(g2.nodes))
 
 
-def _iou_edges(g1, g2):
+def _filter_graph_by_edge_type(G: nx.Graph, edge_type: str | None) -> nx.Graph:
+    if edge_type is None:
+        return G
+    return graph_subgraph_by_edge_kingdom(G, edge_type)
+
+
+def _iou_edges(g1, g2, pair_type: str | None = None):
+    g1 = _filter_graph_by_edge_type(g1, pair_type)
+    g2 = _filter_graph_by_edge_type(g2, pair_type)
     e1 = ["|".join(sorted(e)) for e in g1.edges]
     e2 = ["|".join(sorted(e)) for e in g2.edges]
     return calc_iou(e1, e2)
@@ -285,7 +313,11 @@ _METRICS = {
 
 
 def compare_graphs_pairwise(
-    graphs: list[nx.Graph], labels: list[str], metric: str, **metric_kwargs
+    graphs: list[nx.Graph],
+    labels: list[str],
+    metric: str,
+    pair_type: str | None = None,
+    **metric_kwargs,
 ) -> pd.DataFrame:
     """
     Pairwise matrix of `metric` across `graphs`.
@@ -293,6 +325,16 @@ def compare_graphs_pairwise(
     Supported metrics: `nodes_iou`, `edges_iou`, `kernel_shortest_path`,
     `kernel_weisfeiler_lehman`. Kernel metrics accept `normalize` (default
     `True`).
+
+    For `edges_iou`, `pair_type` can be used to restrict the comparison to
+    a specific edge type:
+
+      - `pair_type='Fungi-Fungi'`
+      - `pair_type='Bacteria-Bacteria'`
+      - `pair_type='Fungi-Bacteria'`
+
+    The matrix itself does not label the selected pair type; it only computes
+    the requested metric on the filtered edge set.
     """
     if metric not in _METRICS:
         raise ValueError(f"Unknown metric: {metric} (available: {sorted(_METRICS)})")
@@ -300,5 +342,12 @@ def compare_graphs_pairwise(
     matrix = pd.DataFrame(index=labels, columns=labels, dtype=float)
     for i, gi in enumerate(graphs):
         for j, gj in enumerate(graphs):
-            matrix.iloc[i, j] = fn(gi, gj, **metric_kwargs)
+            if metric == "edges_iou":
+                matrix.iloc[i, j] = fn(gi, gj, pair_type=pair_type, **metric_kwargs)
+            else:
+                if pair_type is not None:
+                    raise ValueError(
+                        "pair_type is only supported for metric 'edges_iou'"
+                    )
+                matrix.iloc[i, j] = fn(gi, gj, **metric_kwargs)
     return matrix

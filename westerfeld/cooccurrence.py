@@ -131,6 +131,13 @@ def main():
         print(f"Pairwise {metric}")
         print(compare_graphs_pairwise(graphs, labels, metric))
 
+    print("\nPairwise edges_iou for Fungi-Fungi edges")
+    print(compare_graphs_pairwise(graphs, labels, "edges_iou", pair_type="Fungi-Fungi"))
+    print("\nPairwise edges_iou for Bacteria-Bacteria edges")
+    print(compare_graphs_pairwise(graphs, labels, "edges_iou", pair_type="Bacteria-Bacteria"))
+    print("\nPairwise edges_iou for Fungi-Bacteria edges")
+    print(compare_graphs_pairwise(graphs, labels, "edges_iou", pair_type="Fungi-Bacteria"))
+
     cs = common_subgraph(graph_1, graph_2)
     print(
         f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"
