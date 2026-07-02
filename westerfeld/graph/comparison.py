@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -153,6 +155,82 @@ def compare_graphs_pairwise_node_type_iou(
     return compare_graphs_pairwise(
         graphs, labels, "nodes_iou", pair_type=kingdom
     )
+
+
+def _node_color(G: nx.Graph, node):
+    kind = _parse_node_kingdom(G, node)
+    return {
+        "Fungi": "#1f77b4",
+        "Bacteria": "#2ca02c",
+    }.get(kind, "#7f7f7f")
+
+
+def _edge_color(edge_type: str):
+    return {
+        "Fungi-Fungi": "#1f77b4",
+        "Bacteria-Bacteria": "#ff7f0e",
+        "Fungi-Bacteria": "#9467bd",
+    }.get(edge_type, "#7f7f7f")
+
+
+def plot_graphs_side_by_side(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "graph_side_by_side.png",
+    figsize: tuple[float, float] = (14, 7),
+    node_size: int = 80,
+    edge_width: float = 1.0,
+):
+    fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
+    if len(graphs) == 1:
+        axes = [axes]
+
+    for ax, G, label in zip(axes, graphs, labels):
+        if G.number_of_nodes() == 0:
+            ax.set_axis_off()
+            continue
+
+        pos = nx.spring_layout(G, seed=42)
+
+        for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
+            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
+            if not edges:
+                continue
+            nx.draw_networkx_edges(
+                G,
+                pos,
+                edgelist=edges,
+                edge_color=_edge_color(edge_type),
+                width=edge_width,
+                alpha=0.8,
+                ax=ax,
+            )
+
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            nodelist=list(G.nodes),
+            node_color=[_node_color(G, n) for n in G.nodes],
+            node_size=node_size,
+            ax=ax,
+        )
+
+        ax.set_title(label)
+        ax.set_axis_off()
+
+    legend_handles = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
+        Line2D([0], [0], color="#1f77b4", linewidth=2, label="Fungi-Fungi edge"),
+        Line2D([0], [0], color="#ff7f0e", linewidth=2, label="Bacteria-Bacteria edge"),
+        Line2D([0], [0], color="#9467bd", linewidth=2, label="Fungi-Bacteria edge"),
+    ]
+    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return path
 
 
 def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.DataFrame:

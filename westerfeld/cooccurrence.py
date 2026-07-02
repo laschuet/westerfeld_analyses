@@ -12,9 +12,11 @@ from graph.comparison import (
     common_subgraph,
     compare_graph_metrics,
     compare_graphs_pairwise,
+    compare_graphs_pairwise_node_type_iou,
     find_similar_subgraphs,
     graph_edge_type_summary,
     graph_node_type_summary,
+    plot_graphs_side_by_side,
     is_subgraph,
 )
 from graph.creation import CorrelationGraph, GlassoGraph
@@ -145,6 +147,15 @@ def main():
     print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Fungi"))
     print("\nPairwise nodes_iou for Bacteria nodes")
     print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Bacteria"))
+
+    plot_graphs_side_by_side(
+        graphs,
+        labels,
+        path="graph_side_by_side.png",
+        figsize=(14, 7),
+        node_size=80,
+        edge_width=1.0,
+    )
 
     cs = common_subgraph(graph_1, graph_2)
     print(
