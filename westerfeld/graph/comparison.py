@@ -52,6 +52,104 @@ def graph_metrics(G: nx.Graph) -> dict:
     }
 
 
+def _parse_node_kingdom(G: nx.Graph, node):
+    if "kingdom" in G.nodes[node]:
+        return G.nodes[node]["kingdom"]
+    if isinstance(node, str) and ":" in node:
+        return node.split(":", 1)[0]
+    return None
+
+
+def _canonical_edge_kingdom_type(kingdom_a, kingdom_b):
+    if kingdom_a is None or kingdom_b is None:
+        return None
+    if kingdom_a == kingdom_b:
+        return f"{kingdom_a}-{kingdom_a}"
+    if {kingdom_a, kingdom_b} == {"Fungi", "Bacteria"}:
+        return "Fungi-Bacteria"
+    return "-".join(sorted([kingdom_a, kingdom_b]))
+
+
+def node_kingdom(G: nx.Graph, node):
+    return _parse_node_kingdom(G, node)
+
+
+def edge_kingdom_type(G: nx.Graph, u, v):
+    attr = G.edges[u, v].get("kingdom_edge")
+    if attr is not None:
+        return attr
+    return _canonical_edge_kingdom_type(_parse_node_kingdom(G, u), _parse_node_kingdom(G, v))
+
+
+def graph_subgraph_by_node_kingdom(G: nx.Graph, kingdom: str) -> nx.Graph:
+    nodes = [n for n in G.nodes if _parse_node_kingdom(G, n) == kingdom]
+    return G.subgraph(nodes).copy()
+
+
+def graph_subgraph_by_edge_kingdom(G: nx.Graph, edge_type: str) -> nx.Graph:
+    H = nx.Graph()
+    for u, v, data in G.edges(data=True):
+        if edge_kingdom_type(G, u, v) == edge_type:
+            H.add_edge(u, v, **data)
+    nx.set_node_attributes(H, {n: G.nodes[n] for n in H.nodes})
+    return H
+
+
+def graph_metrics_by_kingdom(G: nx.Graph, kingdom: str) -> dict:
+    return graph_metrics(graph_subgraph_by_node_kingdom(G, kingdom))
+
+
+def graph_metrics_by_edge_type(G: nx.Graph, edge_type: str) -> dict:
+    return graph_metrics(graph_subgraph_by_edge_kingdom(G, edge_type))
+
+
+def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.DataFrame:
+    """Summarize edge-type-specific subgraphs.
+
+    The edge sets for different types are disjoint, but nodes may appear in
+    more than one edge-type subgraph. By default, the table reports only
+    edge-focused metrics so it is not misleading.
+    """
+    counts: dict[str, int] = {}
+    for u, v in G.edges():
+        et = edge_kingdom_type(G, u, v)
+        counts[et] = counts.get(et, 0) + 1
+    summary = []
+    for edge_type, count in sorted(counts.items()):
+        sub = graph_subgraph_by_edge_kingdom(G, edge_type)
+        row = {
+            "edge_type": edge_type,
+            "edges": count,
+            "density": nx.density(sub),
+            "avg_degree": float(np.mean([d for _, d in sub.degree()]))
+            if sub.number_of_nodes() > 0
+            else 0.0,
+        }
+        if include_nodes:
+            row["active_nodes"] = sub.number_of_nodes()
+        summary.append(row)
+    return pd.DataFrame(summary).set_index("edge_type")
+
+    degrees = [d for _, d in G.degree()]
+    components = list(nx.connected_components(G))
+    largest_cc = max(components, key=len)
+    H = G.subgraph(largest_cc)
+    return {
+        "nodes": n_nodes,
+        "edges": n_edges,
+        "density": nx.density(G),
+        "avg_degree": float(np.mean(degrees)),
+        "components": len(components),
+        "largest_cc": len(largest_cc),
+        "diameter": nx.diameter(H),
+        "avg_shortest_path": nx.average_shortest_path_length(H),
+        "avg_clustering": nx.average_clustering(G),
+        "modularity": nx.community.modularity(
+            G, nx.community.label_propagation_communities(G)
+        ),
+    }
+
+
 def compare_graph_metrics(graphs: list[nx.Graph], labels: list[str]) -> pd.DataFrame:
     """One row per graph with `graph_metrics` columns."""
     return pd.DataFrame([graph_metrics(g) for g in graphs], index=labels)
