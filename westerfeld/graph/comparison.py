@@ -103,6 +103,30 @@ def graph_metrics_by_edge_type(G: nx.Graph, edge_type: str) -> dict:
     return graph_metrics(graph_subgraph_by_edge_kingdom(G, edge_type))
 
 
+def graph_node_type_summary(G: nx.Graph) -> pd.DataFrame:
+    """Summarize each kingdom's induced subgraph by node type."""
+    kingdoms = sorted({
+        _parse_node_kingdom(G, n)
+        for n in G.nodes
+        if _parse_node_kingdom(G, n) is not None
+    })
+    summary = []
+    for kingdom in kingdoms:
+        sub = graph_subgraph_by_node_kingdom(G, kingdom)
+        degrees = [d for _, d in sub.degree()]
+        summary.append(
+            {
+                "kingdom": kingdom,
+                "nodes": sub.number_of_nodes(),
+                "edges": sub.number_of_edges(),
+                "density": nx.density(sub),
+                "avg_degree": float(np.mean(degrees)) if degrees else 0.0,
+                "components": nx.number_connected_components(sub),
+            }
+        )
+    return pd.DataFrame(summary).set_index("kingdom")
+
+
 def _edge_type_edges(G: nx.Graph, edge_type: str | None) -> set[tuple]:
     return {
         tuple(sorted((u, v)))

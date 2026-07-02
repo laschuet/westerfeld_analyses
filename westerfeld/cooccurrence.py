@@ -14,6 +14,7 @@ from graph.comparison import (
     compare_graphs_pairwise,
     find_similar_subgraphs,
     graph_edge_type_summary,
+    graph_node_type_summary,
     is_subgraph,
 )
 from graph.creation import CorrelationGraph, GlassoGraph
@@ -121,6 +122,8 @@ def main():
     for graph, label in zip(graphs, labels):
         print(f"\nEdge-type summary for {label}")
         print(graph_edge_type_summary(graph))
+        print(f"\nNode-type (kingdom) summary for {label}")
+        print(graph_node_type_summary(graph))
 
     for metric in (
         "nodes_iou",
