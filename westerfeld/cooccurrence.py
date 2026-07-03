@@ -15,6 +15,7 @@ from graph.comparison import (
     compare_graphs_pairwise_node_type_iou,
     find_similar_subgraphs,
     graph_edge_type_summary,
+    graph_metrics,
     graph_node_type_summary,
     plot_graphs_side_by_side,
     is_subgraph,
@@ -43,6 +44,79 @@ def _scale_block(df, mode):
         scale = df.std(ddof=0).mean() or 1
         return df / scale
     raise ValueError(f"Unknown mode value: {mode}")
+
+
+def _sanitize_sheet_name(name):
+    invalid = '[]:*?/\\'
+    sanitized = ''.join('_' if ch in invalid else ch for ch in str(name))
+    return sanitized[:31]
+
+
+def export_cooccurrence_results(path, graphs, labels):
+    graph_metrics_df = pd.DataFrame([graph_metrics(graph) for graph in graphs], index=labels)
+
+    pairwise_metrics = {
+        metric: compare_graphs_pairwise(graphs, labels, metric)
+        for metric in (
+            "nodes_iou",
+            "edges_iou",
+            "kernel_shortest_path",
+            "kernel_weisfeiler_lehman",
+        )
+    }
+    edge_iou_sheets = {
+        "Field_vs_Rhizo_Fungi-Fungi": compare_graphs_pairwise(
+            graphs, labels, "edges_iou", pair_type="Fungi-Fungi"
+        ),
+        "Field_vs_Rhizo_Bacteria-Bacteria": compare_graphs_pairwise(
+            graphs, labels, "edges_iou", pair_type="Bacteria-Bacteria"
+        ),
+        "Field_vs_Rhizo_Fungi-Bacteria": compare_graphs_pairwise(
+            graphs, labels, "edges_iou", pair_type="Fungi-Bacteria"
+        ),
+    }
+    node_iou_sheets = {
+        "Field_vs_Rhizo_Fungi_nodes": compare_graphs_pairwise(
+            graphs, labels, "nodes_iou", pair_type="Fungi"
+        ),
+        "Field_vs_Rhizo_Bacteria_nodes": compare_graphs_pairwise(
+            graphs, labels, "nodes_iou", pair_type="Bacteria"
+        ),
+    }
+
+    with pd.ExcelWriter(path) as writer:
+        graph_metrics_df.to_excel(writer, sheet_name=_sanitize_sheet_name("Graph Metrics"))
+
+        for graph, label in zip(graphs, labels):
+            graph_edge_type_summary(graph).to_excel(
+                writer,
+                sheet_name=_sanitize_sheet_name(f"{label} Edge Summary"),
+            )
+            graph_node_type_summary(graph).to_excel(
+                writer,
+                sheet_name=_sanitize_sheet_name(f"{label} Node Summary"),
+            )
+
+        for metric, df in pairwise_metrics.items():
+            df.to_excel(writer, sheet_name=_sanitize_sheet_name(f"Pairwise {metric}"))
+
+        for name, df in edge_iou_sheets.items():
+            df.to_excel(writer, sheet_name=_sanitize_sheet_name(name))
+
+        for name, df in node_iou_sheets.items():
+            df.to_excel(writer, sheet_name=_sanitize_sheet_name(name))
+
+        common_df = pd.DataFrame(
+            [
+                {
+                    "common_nodes": common_subgraph(graphs[0], graphs[1]).number_of_nodes(),
+                    "common_edges": common_subgraph(graphs[0], graphs[1]).number_of_edges(),
+                    "graph_1_is_subgraph_of_graph_2": is_subgraph(graphs[0], graphs[1]),
+                    "graph_2_is_subgraph_of_graph_1": is_subgraph(graphs[1], graphs[0]),
+                }
+            ]
+        )
+        common_df.to_excel(writer, sheet_name=_sanitize_sheet_name("Common Subgraph"), index=False)
 
 
 def cooccurrence(
@@ -93,8 +167,8 @@ def main():
 
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    # graph_creator = CorrelationGraph()
-    graph_creator = GlassoGraph()
+    graph_creator = CorrelationGraph()
+    # graph_creator = GlassoGraph()
 
     graph_1 = cooccurrence(
         kingdoms,
@@ -163,6 +237,9 @@ def main():
     )
     print(f"Graph_1 is subgraph of graph_2: {is_subgraph(graph_1, graph_2)}")
     print(f"Graph_2 is subgraph of graph_1: {is_subgraph(graph_2, graph_1)}")
+
+    print("\nExport Excel results to cooccurrence_results.xlsx")
+    export_cooccurrence_results("cooccurrence_results.xlsx", graphs, labels)
 
     # Can be slow on dense graphs
     # similar = find_similar_subgraphs(graph_1, graph_2)
