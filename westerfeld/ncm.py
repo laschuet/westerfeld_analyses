@@ -232,6 +232,7 @@ def compare_ncm_results(results):
         rows.append(
             {
                 "m": result.m,
+                "N": result.N,
                 "Nm": result.Nm,
                 "R^2": result.rsquared,
                 "Below": len(below),
