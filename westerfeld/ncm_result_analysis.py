@@ -10,9 +10,9 @@ def load_taxa_bounds(type_label: str) -> pd.DataFrame:
     rh_path = f"taxa_bounds_{type_label}_Rhizosphere.xlsx"
 
     df_fs = pd.read_excel(fs_path)
-    df_fs["Habitat"] = "Field_Soil"
+    df_fs["Habitat"] = "FS"
     df_rh = pd.read_excel(rh_path)
-    df_rh["Habitat"] = "Rhizosphere"
+    df_rh["Habitat"] = "RH"
 
     df = pd.concat([df_fs, df_rh], ignore_index=True)
     df["Prediction"] = df["Prediction"].replace(
@@ -21,48 +21,72 @@ def load_taxa_bounds(type_label: str) -> pd.DataFrame:
             "below prediction": "below",
         }
     )
-    df["Habitat"] = df["Habitat"].replace(
-        {
-            "Field_Soil": "FS",
-            "Rhizosphere": "RH",
-        }
-    )
+
+    # Ensure every Taxa x Habitat combination exists so downstream pivot
+    # produces explicit entries for taxa missing in one habitat.
+    if "Taxa" in df.columns:
+        taxa = df["Taxa"].unique()
+        habitats = ["FS", "RH"]
+        full = pd.DataFrame([(t, h) for t in taxa for h in habitats], columns=["Taxa", "Habitat"]) 
+        df = pd.merge(full, df, on=["Taxa", "Habitat"], how="left")
+
+        # Fill defaults for missing combinations
+        df["Prediction"] = df["Prediction"].fillna("neutral").astype(str).str.strip().replace({"": "neutral"})
+        if "Mean Relative Abundance" in df.columns:
+            df["Mean Relative Abundance"] = df["Mean Relative Abundance"].fillna(0)
+        if "Occurrence Frequency" in df.columns:
+            df["Occurrence Frequency"] = df["Occurrence Frequency"].fillna(0)
 
     return df
 
 
-def compute_core_metrics(pivot: pd.DataFrame) -> pd.DataFrame:
+def load_ncm_summary(type_label: str) -> dict[str, float]:
+    """Load habitat-specific community size N values from the NCM summary CSV."""
+    path = f"ncm_summary_{type_label}.csv"
+    df = pd.read_csv(path, index_col=0)
+    df.index = df.index.to_series().replace({"Field_Soil": "FS", "Rhizosphere": "RH"})
+    return df["N"].astype(int).to_dict()
+
+
+def compute_core_metrics(
+    pivot: pd.DataFrame, community_sizes: dict[str, float] | None = None
+) -> pd.DataFrame:
     """Add ratio, fold change and category columns to the pivot table."""
     RA = pivot["Mean Relative Abundance"]
-    OC = pivot["Occurrence Frequency"]
+    #OC = pivot["Occurrence Frequency"]
 
     pivot["FS_RA"] = RA["FS"]
     pivot["RH_RA"] = RA["RH"]
-    pivot["FS_Occ"] = OC["FS"]
-    pivot["RH_Occ"] = OC["RH"]
 
-    eps_ra = float(RA.stack().min()) / 2
-    ra_num = pivot["RH_RA"]
-    ra_den = pivot["FS_RA"]
-    ra_only = (ra_num.isna() | ra_num.eq(0)) | (ra_den.isna() | ra_den.eq(0))
-    pivot["FC_RA"] = np.where(
-        ra_only,
-        (ra_num.fillna(0) + eps_ra) / (ra_den.fillna(0) + eps_ra),
-        ra_num / ra_den,
-    )
+    ra_rh = pivot["RH_RA"]
+    ra_fs = pivot["FS_RA"]
+
+    if community_sizes is None or "FS" not in community_sizes or "RH" not in community_sizes:
+        eps_ra = float(RA.stack().min()) / 2
+        pivot["FC_RA"] = (ra_rh + eps_ra) / (ra_fs + eps_ra)
+    else:
+        eps_ra_fs = 1.0 / community_sizes["FS"]
+        eps_ra_rh = 1.0 / community_sizes["RH"]
+        pivot["FC_RA"] = (ra_rh + eps_ra_rh) / (ra_fs + eps_ra_fs)
+
     pivot["log2FC_RA"] = np.log2(pivot["FC_RA"])
 
-    eps_occ = float(OC.stack().min()) / 2
-    occ_num = pivot["RH_Occ"]
-    occ_den = pivot["FS_Occ"]
-    occ_only = (occ_num.isna() | occ_num.eq(0)) | (occ_den.isna() | occ_den.eq(0))
-    pivot["FC_Occ"] = np.where(
-        occ_only,
-        (occ_num.fillna(0) + eps_occ) / (occ_den.fillna(0) + eps_occ),
-        occ_num / occ_den,
-    )
-    pivot["log2FC_Occ"] = np.log2(pivot["FC_Occ"])
 
+    #pivot["FS_Occ"] = OC["FS"]
+    #pivot["RH_Occ"] = OC["RH"]
+
+    #occ_rh = pivot["RH_Occ"]
+    #occ_fs = pivot["FS_Occ"]
+
+    #if community_sizes is None or "FS" not in community_sizes or "RH" not in community_sizes:
+    #    eps_occ = float(OC.stack().min()) / 2
+    #    pivot["FC_Occ"] = (occ_rh + eps_occ) / (occ_fs + eps_occ)
+    #else:
+    #    eps_occ_fs = 1.0 / community_sizes["FS"]
+    #    eps_occ_rh = 1.0 / community_sizes["RH"]
+    #    pivot["FC_Occ"] = (occ_rh + eps_occ_rh) / (occ_fs + eps_occ_fs)
+
+    #pivot["log2FC_Occ"] = np.log2(pivot["FC_Occ"])
     return pivot
 
 
@@ -70,12 +94,6 @@ def classify(row: pd.Series) -> str:
     fs = row["Prediction"]["FS"]
     rh = row["Prediction"]["RH"]
 
-    if pd.isna(fs) and pd.isna(rh):
-        return "No data"
-    if pd.isna(fs):
-        return f"{rh} RH only"
-    if pd.isna(rh):
-        return f"{fs} FS only"
     if fs == rh:
         return f"Consistently {fs}"
     if (fs == "above" and rh == "below") or (fs == "below" and rh == "above"):
@@ -134,9 +152,10 @@ def main():
     print("| NCM RESULT ANALYSIS SCRIPT |")
     print("-------------------------------")
 
-    type_label = "Bacteria"
+    type_label = "Fungi"
 
     df = load_taxa_bounds(type_label)
+    community_sizes = load_ncm_summary(type_label)
     pivot = df.pivot_table(
         index="Taxa",
         columns="Habitat",
@@ -148,7 +167,7 @@ def main():
         aggfunc="first",
     )
 
-    pivot = compute_core_metrics(pivot)
+    pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
     categories = build_category_splits(pivot)
     export_report(pivot, categories, type_label)
 
