@@ -62,8 +62,7 @@ def compute_core_metrics(
     ra_fs = pivot["FS_RA"]
 
     if community_sizes is None or "FS" not in community_sizes or "RH" not in community_sizes:
-        eps_ra = float(RA.stack().min()) / 2
-        pivot["FC_RA"] = (ra_rh + eps_ra) / (ra_fs + eps_ra)
+        pivot["FC_RA"] = np.nan
     else:
         eps_ra_fs = 1.0 / community_sizes["FS"]
         eps_ra_rh = 1.0 / community_sizes["RH"]
@@ -79,8 +78,7 @@ def compute_core_metrics(
     #occ_fs = pivot["FS_Occ"]
 
     #if community_sizes is None or "FS" not in community_sizes or "RH" not in community_sizes:
-    #    eps_occ = float(OC.stack().min()) / 2
-    #    pivot["FC_Occ"] = (occ_rh + eps_occ) / (occ_fs + eps_occ)
+        #pivot["FC_Occ"] = np.nan
     #else:
     #    eps_occ_fs = 1.0 / community_sizes["FS"]
     #    eps_occ_rh = 1.0 / community_sizes["RH"]
