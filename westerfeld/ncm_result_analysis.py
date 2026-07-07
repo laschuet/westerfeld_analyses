@@ -116,10 +116,24 @@ def build_category_splits(pivot: pd.DataFrame) -> dict:
     }
 
 
+def build_prediction_contingency(pivot: pd.DataFrame) -> pd.DataFrame:
+    fs_pred = pivot["Prediction"]["FS"].fillna("neutral").replace({"neutral": "within"})
+    rh_pred = pivot["Prediction"]["RH"].fillna("neutral").replace({"neutral": "within"})
+    contingency = pd.crosstab(
+        fs_pred,
+        rh_pred,
+        rownames=["FS"],
+        colnames=["RH"],
+        dropna=False,
+    )
+    contingency = contingency.reindex(index=["above", "below", "within"], columns=["above", "below", "within"], fill_value=0)
+    return contingency
+
+
 def plot_category_counts(pivot: pd.DataFrame, type_label: str) -> None:
     order = [
-        "Consistently Neutral",
         "Consistently Above",
+        "Consistently Neutral",
         "Consistently Below",
         "FS Above",
         "FS Below",
@@ -168,6 +182,48 @@ def plot_category_counts(pivot: pd.DataFrame, type_label: str) -> None:
     print(f"Category count plot written: {output_path}")
 
 
+def plot_prediction_contingency_table(pivot: pd.DataFrame, type_label: str) -> None:
+    contingency = build_prediction_contingency(pivot)
+
+    rows = contingency.index.tolist()
+    cols = contingency.columns.tolist()
+    cell_text = contingency.astype(int).values.tolist()
+
+    cell_colors = []
+    for fs_pred in rows:
+        row_colors = []
+        for rh_pred in cols:
+            if fs_pred == rh_pred:
+                row_colors.append("lightgray")
+            elif {fs_pred, rh_pred} == {"above", "below"}:
+                row_colors.append("royalblue")
+            else:
+                row_colors.append("skyblue")
+        cell_colors.append(row_colors)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.axis("off")
+    table = ax.table(
+        cellText=cell_text,
+        rowLabels=rows,
+        colLabels=cols,
+        cellColours=cell_colors,
+        cellLoc="center",
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.2)
+
+    ax.set_title(f"Kontingenztabelle Prediction - {type_label}", pad=20)
+
+    output_path = f"ncm_prediction_contingency_{type_label}.png"
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Prediction contingency plot written: {output_path}")
+
+
 def export_report(pivot: pd.DataFrame, categories: dict, type_label: str) -> None:
     drop_columns = [
         "FS_RA",
@@ -195,6 +251,9 @@ def export_report(pivot: pd.DataFrame, categories: dict, type_label: str) -> Non
             sheet_name = name[:31]
             table_export.to_excel(writer, sheet_name=sheet_name)
 
+        contingency = build_prediction_contingency(pivot)
+        contingency.to_excel(writer, sheet_name="Contingency")
+
     print(f"Report written: {output_path}")
 
 
@@ -203,7 +262,7 @@ def main():
     print("| NCM RESULT ANALYSIS SCRIPT |")
     print("-------------------------------")
 
-    type_label = "Bacteria"
+    type_label = "Fungi"
 
     df = load_taxa_bounds(type_label)
     community_sizes = load_ncm_summary(type_label)
@@ -221,6 +280,7 @@ def main():
     pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
     categories = build_category_splits(pivot)
     plot_category_counts(pivot, type_label)
+    plot_prediction_contingency_table(pivot, type_label)
     export_report(pivot, categories, type_label)
 
 
