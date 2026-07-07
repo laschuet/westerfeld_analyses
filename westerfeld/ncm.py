@@ -179,55 +179,59 @@ def plot_ncm_grid(results, path="ncm.pdf", ncols=2):
 
 
 def taxa_bounds(result):
+    """Return taxa partitions for a result as a single DataFrame.
+
+    The returned DataFrame contains columns:
+    `Taxa`, `Mean Relative Abundance`, `Occurrence Frequency`, `Prediction`, `Habitat`.
+    """
     y = result.y
-    below = y < result.low_bound
-    above = y > result.high_bound
-    neutral = (y >= result.low_bound) & (y <= result.high_bound)
-    return result.taxa[below], result.taxa[above], result.taxa[neutral]
+    below_mask = y < result.low_bound
+    above_mask = y > result.high_bound
+    neutral_mask = (y >= result.low_bound) & (y <= result.high_bound)
 
+    taxa_low = result.taxa[below_mask]
+    taxa_high = result.taxa[above_mask]
+    taxa_neutral = result.taxa[neutral_mask]
 
-def export_taxa_bounds(result, path="taxa_bounds.xlsx"):
-    print("Analyze taxa...", end="")
-    taxa_low, taxa_high, taxa_neutral = taxa_bounds(result)
-
-    y = result.y
-    below = y < result.low_bound
-    above = y > result.high_bound
-    neutral = (y >= result.low_bound) & (y <= result.high_bound)    
+    habitat_map = {"Field_Soil": "FS", "Rhizosphere": "RH"}
+    habitat_code = habitat_map.get(result.label, result.label)
 
     df_low = pd.DataFrame({
         "Taxa": taxa_low,
-        "Mean Relative Abundance": result.x[below],
-        "Occurrence Frequency": result.y[below]
+        "Mean Relative Abundance": result.x[below_mask],
+        "Occurrence Frequency": result.y[below_mask],
+        "Prediction": "below",
+        "Habitat": habitat_code,
     })
-    df_low["Prediction"] = "below prediction"
 
     df_high = pd.DataFrame({
         "Taxa": taxa_high,
-        "Mean Relative Abundance": result.x[above],
-        "Occurrence Frequency": result.y[above]
+        "Mean Relative Abundance": result.x[above_mask],
+        "Occurrence Frequency": result.y[above_mask],
+        "Prediction": "above",
+        "Habitat": habitat_code,
     })
-    df_high["Prediction"] = "above prediction"
 
     df_neutral = pd.DataFrame({
         "Taxa": taxa_neutral,
-        "Mean Relative Abundance": result.x[neutral],
-        "Occurrence Frequency": result.y[neutral]
+        "Mean Relative Abundance": result.x[neutral_mask],
+        "Occurrence Frequency": result.y[neutral_mask],
+        "Prediction": "neutral",
+        "Habitat": habitat_code,
     })
-    df_neutral["Prediction"] = "neutral"
 
     df = pd.concat([df_low, df_high, df_neutral], ignore_index=True)
-
-    with pd.ExcelWriter(path) as writer:
-        df.to_excel(writer, sheet_name="Taxa Bounds", index=False)
-    print("DONE")
+    return df
 
 
 def compare_ncm_results(results):
     """One row per result with the fit parameters and partition sizes."""
     rows = []
     for result in results:
-        below, above, neutral = taxa_bounds(result)
+        df_taxa = taxa_bounds(result)
+        below = df_taxa[df_taxa["Prediction"] == "below"]
+        above = df_taxa[df_taxa["Prediction"] == "above"]
+        neutral = df_taxa[df_taxa["Prediction"] == "neutral"]
         n_taxa = len(result.taxa)
         rows.append(
             {
@@ -246,9 +250,11 @@ def compare_ncm_results(results):
 
 def compare_ncm_partitions(results, partition="above"):
     """Pairwise IoU (Jaccard) of one partition's taxa across results."""
-    index = {"below": 0, "above": 1, "neutral": 2}[partition]
     labels = [result.label for result in results]
-    taxa_sets = [list(taxa_bounds(result)[index]) for result in results]
+    taxa_sets = []
+    for result in results:
+        df_taxa = taxa_bounds(result)
+        taxa_sets.append(df_taxa[df_taxa["Prediction"] == partition]["Taxa"].tolist())
 
     matrix = pd.DataFrame(index=labels, columns=labels, dtype=float)
     for i, taxa_i in enumerate(taxa_sets):
@@ -259,6 +265,197 @@ def compare_ncm_partitions(results, partition="above"):
                 matrix.iloc[i, j] = calc_iou(taxa_i, taxa_j)
     return matrix
 
+def compute_core_metrics(
+    pivot: pd.DataFrame, community_sizes: dict[str, float] | None = None
+) -> pd.DataFrame:
+    """Add ratio, fold change and category columns to the pivot table."""
+    RA = pivot["Mean Relative Abundance"]
+
+    pivot["FS_RA"] = RA["FS"]
+    pivot["RH_RA"] = RA["RH"]
+
+    ra_rh = pivot["RH_RA"]
+    ra_fs = pivot["FS_RA"]
+
+    if community_sizes is None or "FS" not in community_sizes or "RH" not in community_sizes:
+        pivot["FC_RA"] = np.nan
+    else:
+        eps_ra_fs = 1.0 / community_sizes["FS"]
+        eps_ra_rh = 1.0 / community_sizes["RH"]
+        pivot["FC_RA"] = (ra_rh + eps_ra_rh) / (ra_fs + eps_ra_fs)
+
+    pivot["log2FC_RA"] = np.log2(pivot["FC_RA"])
+
+    return pivot
+
+
+def classify(row: pd.Series) -> str:
+    fs = row["Prediction"]["FS"]
+    rh = row["Prediction"]["RH"]
+
+    if fs == rh:
+        return f"Consistently {fs.capitalize()}"
+    if (fs == "above" and rh == "below") or (fs == "below" and rh == "above"):
+        return "Opposite"
+    if fs == "above" and rh == "neutral":
+        return "FS Above"
+    if fs == "below" and rh == "neutral":
+        return "FS Below"
+    if fs == "neutral" and rh == "above":
+        return "RH Above"
+    if fs == "neutral" and rh == "below":
+        return "RH Below"
+    return "Other"
+
+
+def build_category_splits(pivot: pd.DataFrame) -> dict:
+    pivot["Category"] = pivot.apply(classify, axis=1)
+    return {
+        cat: pivot[pivot["Category"] == cat]
+        for cat in pivot["Category"].dropna().unique()
+    }
+
+
+def build_prediction_contingency(pivot: pd.DataFrame) -> pd.DataFrame:
+    fs_pred = pivot["Prediction"]["FS"].fillna("neutral").replace({"neutral": "within"})
+    rh_pred = pivot["Prediction"]["RH"].fillna("neutral").replace({"neutral": "within"})
+    contingency = pd.crosstab(
+        fs_pred,
+        rh_pred,
+        rownames=["FS"],
+        colnames=["RH"],
+        dropna=False,
+    )
+    contingency = contingency.reindex(index=["above", "below", "within"], columns=["above", "below", "within"], fill_value=0)
+    return contingency
+
+
+def plot_category_counts(pivot: pd.DataFrame, type_label: str) -> None:
+    order = [
+        "Consistently Neutral",
+        "Consistently Above",
+        "Consistently Below",
+        "FS Above",
+        "FS Below",
+        "RH Above",
+        "RH Below",
+        "Opposite",
+    ]
+
+    counts = pivot["Category"].value_counts().reindex(order, fill_value=0)
+
+    color_map = {
+        "Consistently Neutral": "lightgray",
+        "Consistently Above": "lightgray",
+        "Consistently Below": "lightgray",
+        "FS Above": "skyblue",
+        "FS Below": "skyblue",
+        "RH Above": "skyblue",
+        "RH Below": "skyblue",
+        "Opposite": "royalblue",
+    }
+    colors = [color_map[cat] for cat in counts.index]
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    bars = ax.bar(counts.index, counts.values, color=colors)
+
+    ax.set_title(f"Taxa pro Kategorie - {type_label}")
+    ax.set_ylabel("Anzahl Taxa")
+    ax.set_xlabel("Kategorie")
+    ax.set_xticks(range(len(counts.index)))
+    ax.set_xticklabels(counts.index, rotation=30, ha="right")
+
+    for bar, value in zip(bars, counts.values):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.5,
+            str(int(value)),
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    output_path = f"ncm_category_counts_{type_label}.png"
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Category count plot written: {output_path}")
+
+
+def plot_prediction_contingency_table(pivot: pd.DataFrame, type_label: str) -> None:
+    contingency = build_prediction_contingency(pivot)
+
+    rows = contingency.index.tolist()
+    cols = contingency.columns.tolist()
+    cell_text = contingency.astype(int).values.tolist()
+
+    cell_colors = []
+    for fs_pred in rows:
+        row_colors = []
+        for rh_pred in cols:
+            if fs_pred == rh_pred:
+                row_colors.append("lightgray")
+            elif {fs_pred, rh_pred} == {"above", "below"}:
+                row_colors.append("royalblue")
+            else:
+                row_colors.append("skyblue")
+        cell_colors.append(row_colors)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.axis("off")
+    table = ax.table(
+        cellText=cell_text,
+        rowLabels=rows,
+        colLabels=cols,
+        cellColours=cell_colors,
+        cellLoc="center",
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.2)
+
+    ax.set_title(f"Kontingenztabelle Prediction - {type_label}", pad=20)
+
+    output_path = f"ncm_prediction_contingency_{type_label}.png"
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Prediction contingency plot written: {output_path}")
+
+
+def export_report(pivot: pd.DataFrame, categories: dict, type_label: str) -> None:
+    drop_columns = [
+        "FS_RA",
+        "RH_RA",
+        "FS_Occ",
+        "RH_Occ",
+        "FC_RA",
+        "FC_Occ",
+    ]
+
+    pivot_export = (
+        pivot.drop(columns=drop_columns, errors="ignore")
+        .reindex(pivot["log2FC_RA"].abs().sort_values(ascending=False).index)
+    )
+
+    output_path = f"ncm_result_analysis_{type_label}.xlsx"
+    with pd.ExcelWriter(output_path) as writer:
+        pivot_export.to_excel(writer, sheet_name="All_taxa")
+
+        for name, table in categories.items():
+            table_export = (
+                table.drop(columns=drop_columns, errors="ignore")
+                .reindex(table["log2FC_RA"].abs().sort_values(ascending=False).index)
+            )
+            sheet_name = name[:31]
+            table_export.to_excel(writer, sheet_name=sheet_name)
+
+        contingency = build_prediction_contingency(pivot)
+        contingency.to_excel(writer, sheet_name="Contingency")
+
+    print(f"Report written: {output_path}")
+
 
 def main():
     print("---------------------------")
@@ -267,7 +464,7 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
-    type_label = "Bacteria"
+    type_label = "Fungi"
 
     results = []
     for habitat in habitats:
@@ -279,8 +476,53 @@ def main():
             habitats=habitat,
             crops=crops,
         )
-        export_taxa_bounds(result, path=f"taxa_bounds_{type_label}_{habitat}.xlsx")
         results.append(result)
+
+    # Build taxa table from results (replaces previous external taxa_bounds files)
+    taxa_dfs = []
+    for r in results:
+        df_taxa = taxa_bounds(r)
+        taxa_dfs.append(df_taxa)
+    if taxa_dfs:
+        df_all = pd.concat(taxa_dfs, ignore_index=True)
+
+        # ensure full Taxa x Habitat combinations (match previous behavior)
+        taxa = df_all["Taxa"].unique()
+        habitats_codes = ["FS", "RH"]
+        full = pd.DataFrame([(t, h) for t in taxa for h in habitats_codes], columns=["Taxa", "Habitat"])
+        df_all = pd.merge(full, df_all, on=["Taxa", "Habitat"], how="left")
+
+        # fill defaults for missing combinations
+        df_all["Prediction"] = df_all["Prediction"].fillna("neutral").astype(str).str.strip().replace({"": "neutral"})
+        if "Mean Relative Abundance" in df_all.columns:
+            df_all["Mean Relative Abundance"] = df_all["Mean Relative Abundance"].fillna(0)
+        if "Occurrence Frequency" in df_all.columns:
+            df_all["Occurrence Frequency"] = df_all["Occurrence Frequency"].fillna(0)
+
+        pivot = df_all.pivot_table(
+            index="Taxa",
+            columns="Habitat",
+            values=[
+                "Mean Relative Abundance",
+                "Occurrence Frequency",
+                "Prediction",
+            ],
+            aggfunc="first",
+        )
+
+        # community sizes from fitted results (map labels to FS/RH if needed)
+        label_map = {"Field_Soil": "FS", "Rhizosphere": "RH"}
+        community_sizes = {
+            label_map.get(r.label, r.label): int(r.N) for r in results
+        }
+
+        pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
+        categories = build_category_splits(pivot)
+
+        # generate plots and report
+        plot_category_counts(pivot, type_label)
+        plot_prediction_contingency_table(pivot, type_label)
+        export_report(pivot, categories, type_label)
 
     plot_ncm_grid(results, path=f"ncm_{type_label}.pdf")
 
