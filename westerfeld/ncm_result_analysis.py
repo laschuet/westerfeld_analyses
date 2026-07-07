@@ -1,5 +1,6 @@
 import argparse
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -93,7 +94,7 @@ def classify(row: pd.Series) -> str:
     rh = row["Prediction"]["RH"]
 
     if fs == rh:
-        return f"Consistently {fs}"
+        return f"Consistently {fs.capitalize()}"
     if (fs == "above" and rh == "below") or (fs == "below" and rh == "above"):
         return "Opposite"
     if fs == "above" and rh == "neutral":
@@ -113,6 +114,58 @@ def build_category_splits(pivot: pd.DataFrame) -> dict:
         cat: pivot[pivot["Category"] == cat]
         for cat in pivot["Category"].dropna().unique()
     }
+
+
+def plot_category_counts(pivot: pd.DataFrame, type_label: str) -> None:
+    order = [
+        "Consistently Neutral",
+        "Consistently Above",
+        "Consistently Below",
+        "FS Above",
+        "FS Below",
+        "RH Above",
+        "RH Below",
+        "Opposite",
+    ]
+
+    counts = pivot["Category"].value_counts().reindex(order, fill_value=0)
+
+    color_map = {
+        "Consistently Neutral": "lightgray",
+        "Consistently Above": "lightgray",
+        "Consistently Below": "lightgray",
+        "FS Above": "skyblue",
+        "FS Below": "skyblue",
+        "RH Above": "skyblue",
+        "RH Below": "skyblue",
+        "Opposite": "royalblue",
+    }
+    colors = [color_map[cat] for cat in counts.index]
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    bars = ax.bar(counts.index, counts.values, color=colors)
+
+    ax.set_title(f"Taxa pro Kategorie - {type_label}")
+    ax.set_ylabel("Anzahl Taxa")
+    ax.set_xlabel("Kategorie")
+    ax.set_xticks(range(len(counts.index)))
+    ax.set_xticklabels(counts.index, rotation=30, ha="right")
+
+    for bar, value in zip(bars, counts.values):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.5,
+            str(int(value)),
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    output_path = f"ncm_category_counts_{type_label}.png"
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Category count plot written: {output_path}")
 
 
 def export_report(pivot: pd.DataFrame, categories: dict, type_label: str) -> None:
@@ -150,7 +203,7 @@ def main():
     print("| NCM RESULT ANALYSIS SCRIPT |")
     print("-------------------------------")
 
-    type_label = "Fungi"
+    type_label = "Bacteria"
 
     df = load_taxa_bounds(type_label)
     community_sizes = load_ncm_summary(type_label)
@@ -167,6 +220,7 @@ def main():
 
     pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
     categories = build_category_splits(pivot)
+    plot_category_counts(pivot, type_label)
     export_report(pivot, categories, type_label)
 
 
