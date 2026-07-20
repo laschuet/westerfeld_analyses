@@ -7,6 +7,14 @@ from dataclasses import dataclass
 from matplotlib.lines import Line2D
 from sklearn.manifold import TSNE, trustworthiness
 
+from skbio import DistanceMatrix
+from skbio.stats.distance import (
+    permanova as skbio_permanova,
+    permdisp as skbio_permdisp,
+)
+from sklearn.metrics.pairwise import pairwise_distances
+
+
 from _preparation import (
     common_preparation,
     rarefied_taxa_table,
@@ -37,6 +45,80 @@ def _prepare_relative_abundances(
     df_abs = rarefied_taxa_table(df_long, taxonomy)
     return relative_abundances(df_abs)
 
+
+def _distance_matrix(df_relative):
+    """
+    Bray-Curtis distances of the relative abundances as a skbio DistanceMatrix.
+
+    skbio validates that the matrix is symmetric and hollow, so floating-point
+    asymmetry from pairwise_distances is averaged out and the diagonal zeroed.
+    """
+    distances = pairwise_distances(df_relative.values, metric=METRIC)
+    distances = (distances + distances.T) / 2
+    np.fill_diagonal(distances, 0.0)
+    ids = [str(i) for i in range(len(df_relative))]
+    return DistanceMatrix(distances, ids)
+
+
+def permanova(
+    type_label,
+    taxonomy,
+    factor,
+    years=None,
+    habitats=None,
+    beneficials=None,
+    crops=None,
+    permutations=999,
+    seed=42,
+):
+    """
+    PERMANOVA: does community composition differ across the groups of `factor`
+    (an experimental factor in the sample index)?
+
+    Runs on the full Bray-Curtis distances of the relative abundances -- the same
+    dissimilarities the ordination visualizes, NOT the lossy 2D embedding.
+    """
+    df_relative = _prepare_relative_abundances(
+        type_label, taxonomy, years, habitats, beneficials, crops
+    )
+    grouping = df_relative.index.get_level_values(factor).to_numpy()
+    return skbio_permanova(
+        _distance_matrix(df_relative), grouping, permutations=permutations, seed=seed
+    )
+
+
+def permdisp(
+    type_label,
+    taxonomy,
+    factor,
+    years=None,
+    habitats=None,
+    beneficials=None,
+    crops=None,
+    test="median",
+    permutations=999,
+    seed=42,
+):
+    """
+    PERMDISP / betadisper: do the groups of `factor` differ in multivariate
+    dispersion (spread around their centroid)?
+
+    The companion to PERMANOVA: a significant PERMANOVA can stem from a centroid
+    shift (location), unequal dispersion, or both. A non-significant PERMDISP
+    supports reading the PERMANOVA result as a genuine location difference.
+    Runs on the full Bray-Curtis distances of the relative abundances.
+    """
+    df_relative = _prepare_relative_abundances(
+        type_label, taxonomy, years, habitats, beneficials, crops
+    )
+    grouping = df_relative.index.get_level_values(factor).to_numpy()
+    return skbio_permdisp(
+        _distance_matrix(df_relative),
+        grouping,
+        test=test,
+        permutations=permutations,
+        seed=seed,
+    )
 
 def _tsne(df_relative, perplexity):
     tsne = TSNE(
@@ -137,40 +219,32 @@ def plot_perplexity_scan_multi(scans, path="FigS1_perplexity_combined.png"):
     
     for col_idx, (type_label, scan) in enumerate(scans.items()):
         
-        # 1. Zuerst das Maximum der Trustworthiness finden (für beide Plots gleich)
         max_trust_idx = scan["trustworthiness"].idxmax()
         max_trust_val = scan["trustworthiness"].max()
         
-        # Den zugehörigen KL-Wert an dieser Stelle finden
         kl_at_max_trust = scan.loc[max_trust_idx, "kl_divergence"]
 
-        # --- Trustworthiness Plot ---
         axes[0, col_idx].plot(scan.index, scan["trustworthiness"])
         axes[0, col_idx].set_title(f"{type_label}: Trustworthiness")
         axes[0, col_idx].set_ylabel("trustworthiness")
         axes[0, col_idx].grid(True)
 
-        # Punkt bei der Trustworthiness einzeichnen
         axes[0, col_idx].scatter(max_trust_idx, max_trust_val, color='red', s=100, zorder=5, label='Maximum')
         axes[0, col_idx].legend()
 
-        # --- KL Divergence Plot ---
         axes[1, col_idx].plot(scan.index, scan["kl_divergence"])
         axes[1, col_idx].set_title(f"{type_label}: KL Divergence")
         axes[1, col_idx].set_xlabel("perplexity")
         axes[1, col_idx].set_ylabel(r"$D_{KL}$")
         axes[1, col_idx].grid(True)
         
-        # Punkt bei der KL-Divergenz einzeichnen, der zur max Trustworthiness gehört
         axes[1, col_idx].scatter(max_trust_idx, kl_at_max_trust, color='red', s=100, zorder=5, label='Selected Perplexity')
         axes[1, col_idx].legend()
 
-        # Label für den oberen Plot
         axes[0, col_idx].text(0.05, 0.95, labels[label_idx], transform=axes[0, col_idx].transAxes, 
                               fontsize=16, fontweight='bold', va='top')
         label_idx += 1
         
-        # Label für den unteren Plot
         axes[1, col_idx].text(0.05, 0.95, labels[label_idx], transform=axes[1, col_idx].transAxes, 
                               fontsize=16, fontweight='bold', va='top')
         label_idx += 1
@@ -194,12 +268,49 @@ def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordinati
         y = result.embedding["y"].to_numpy()
         color_values = result.embedding.index.get_level_values(color_by)
         
+        # --- Statistik berechnen ---
+        stat_text = ""
+        try:           
+            perm_res = permanova(
+                type_label, 
+                "Genus", 
+                "Habitat", 
+                years=2019, 
+                crops=["Winter wheat 1", "Winter wheat 2"]
+            )
+            p_val_perm = perm_res['p-value']
+            
+            disp_res = permdisp(
+                type_label, 
+                "Genus", 
+                "Habitat", 
+                years=2019, 
+                crops=["Winter wheat 1", "Winter wheat 2"], 
+                test="centroid"
+            )
+            p_val_disp = disp_res['p-value']
+            
+            # Text formatieren (z.B. p < 0.001 oder p = 0.045)
+            perm_str = f"p < 0.001" if p_val_perm < 0.001 else f"p = {p_val_perm:.3f}"
+            disp_str = f"p < 0.001" if p_val_disp < 0.001 else f"p = {p_val_disp:.3f}"
+            
+            stat_text = (f"PERMANOVA: {perm_str}\n"
+                         f"PERMDISP:  {disp_str}")
+                         
+        except Exception as e:
+            print(f"Warnung: Statistik konnte für {type_label} nicht berechnet werden: {e}")
+            stat_text = "Stats: N/A"
+
         ax.set_title(
             f"{type_label}\n"
             f"(n={len(x)}, perplexity={result.perplexity}, $D_{{KL}}$={result.kl_divergence:.4f}, trust={result.trustworthiness:.4f})"
         )
         ax.set_xlabel("t-SNE 1")
         ax.set_ylabel("t-SNE 2")
+
+        ax.text(0.02, 0.98, stat_text, transform=ax.transAxes,
+                fontsize=10, verticalalignment='top', color='black',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
         if marker_by is None:
             for i, color_category in enumerate(np.unique(color_values)):
@@ -311,11 +422,6 @@ def main():
         "Crop", 
         path="Fig1_ordination_combined.png"
     )
-
-    # To quantify the separation this plot shows (PERMANOVA) and check it is a
-    # location shift rather than unequal dispersion (PERMDISP), see
-    # beta_diversity.py, which runs on the same Bray-Curtis distances.
-
 
 if __name__ == "__main__":
     main()
