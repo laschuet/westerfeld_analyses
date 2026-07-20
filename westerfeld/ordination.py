@@ -96,9 +96,9 @@ def ordination(
     crops=None,
 ):
     """
-    Compute a 2D t-SNE ordination of community composition (Bray-Curtis on
-    relative abundances). The returned embedding keeps the per-sample metadata
-    index, so it can be coloured/marked by any experimental factor afterwards.
+        Compute a 2D t-SNE ordination of community composition (Bray-Curtis on
+        relative abundances). The returned embedding keeps the per-sample metadata
+        index, so it can be coloured/marked by any experimental factor afterwards.
     """
     df_relative = _prepare_relative_abundances(
         type_label, taxonomy, years, habitats, beneficials, crops
@@ -125,75 +125,85 @@ def ordination(
     )
 
 
-def plot_perplexity_scan(scan, path="ordination_perplexity.jpg"):
-    """Plot KL divergence and trustworthiness against perplexity side by side."""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    axes[0].plot(scan.index, scan["kl_divergence"])
-    axes[0].set_xlabel("perplexity")
-    axes[0].set_ylabel(r"$D_{KL}$")
-    axes[0].grid(True)
-    axes[1].plot(scan.index, scan["trustworthiness"])
-    axes[1].set_xlabel("perplexity")
-    axes[1].set_ylabel("trustworthiness")
-    axes[1].grid(True)
+def plot_perplexity_scan_multi(scans, path="FigS1_perplexity_combined.png"):
+    """
+        Plot KL divergence and trustworthiness against perplexity for multiple type labels.
+        `scans` is a dictionary: {'Bacteria': scan_df, 'Fungi': scan_df}
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    
+    for col_idx, (type_label, scan) in enumerate(scans.items()):
+        # KL Divergence
+        axes[0, col_idx].plot(scan.index, scan["kl_divergence"])
+        axes[0, col_idx].set_title(f"{type_label}: KL Divergence")
+        axes[0, col_idx].set_ylabel(r"$D_{KL}$")
+        axes[0, col_idx].grid(True)
+        
+        # Trustworthiness 
+        axes[1, col_idx].plot(scan.index, scan["trustworthiness"])
+        axes[1, col_idx].set_title(f"{type_label}: Trustworthiness")
+        axes[1, col_idx].set_xlabel("perplexity")
+        axes[1, col_idx].set_ylabel("trustworthiness")
+        axes[1, col_idx].grid(True)
+
     fig.tight_layout()
     fig.savefig(path)
     return fig
 
 
-def plot_ordination(result, color_by, marker_by=None, path="ordination.jpg"):
+def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordination_combined.png"):
     """
-    Scatter the t-SNE embedding, colouring points by `color_by` (the name of an
-    experimental factor in the sample index). Optionally overlay a second factor
-    via `marker_by`. Leave it `None` for a single-factor plot. t-SNE axes are not
-    interpretable on their own. Only the relative arrangement of points carries
-    meaning.
+        Scatter the t-SNE embedding for multiple type labels side by side.
+        `results` is a dictionary: {'Bacteria': result_obj, 'Fungi': result_obj}
     """
-    x = result.embedding["x"].to_numpy()
-    y = result.embedding["y"].to_numpy()
-    color_values = result.embedding.index.get_level_values(color_by)
-    colormap = plt.get_cmap("tab10")
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    for ax, (type_label, result) in zip(axes, results.items()):
+        x = result.embedding["x"].to_numpy()
+        y = result.embedding["y"].to_numpy()
+        color_values = result.embedding.index.get_level_values(color_by)
+        colormap = plt.get_cmap("tab10")
 
-    fig, ax = plt.subplots()
-    ax.set_title(
-        f"t-SNE of {result.type_label} abundances\n"
-        f"(n={len(x)}, perplexity={result.perplexity},\n"
-        rf"$D_{{KL}}$={result.kl_divergence:.4f}, "
-        f"trustworthiness={result.trustworthiness:.4f})"
-    )
-    ax.set_xlabel("t-SNE 1")
-    ax.set_ylabel("t-SNE 2")
+        ax.set_title(
+            f"t-SNE of {type_label} abundances\n"
+            f"(n={len(x)}, perplexity={result.perplexity},\n"
+            rf"$D_{{KL}}$={result.kl_divergence:.4f}, "
+            f"trustworthiness={result.trustworthiness:.4f})"
+        )
+        ax.set_xlabel("t-SNE 1")
+        ax.set_ylabel("t-SNE 2")
 
-    if marker_by is None:
-        for i, color_category in enumerate(np.unique(color_values)):
-            mask = color_values == color_category
-            ax.scatter(
-                x[mask],
-                y[mask],
-                color=colormap(i % colormap.N),
-                label=str(color_category),
-            )
-    else:
-        marker_values = result.embedding.index.get_level_values(marker_by)
-        markers = Line2D.filled_markers
-        for i, color_category in enumerate(np.unique(color_values)):
-            for j, marker_category in enumerate(np.unique(marker_values)):
-                mask = (color_values == color_category) & (
-                    marker_values == marker_category
-                )
-                if not mask.any():
-                    continue
+        if marker_by is None:
+            for i, color_category in enumerate(np.unique(color_values)):
+                mask = color_values == color_category
                 ax.scatter(
                     x[mask],
                     y[mask],
-                    marker=markers[j % len(markers)],
                     color=colormap(i % colormap.N),
-                    label=f"{color_category} / {marker_category}",
+                    label=str(color_category),
                 )
+        else:
+            marker_values = result.embedding.index.get_level_values(marker_by)
+            markers = Line2D.filled_markers
+            for i, color_category in enumerate(np.unique(color_values)):
+                for j, marker_category in enumerate(np.unique(marker_values)):
+                    mask = (color_values == color_category) & (
+                        marker_values == marker_category
+                    )
+                    if not mask.any():
+                        continue
+                    ax.scatter(
+                        x[mask],
+                        y[mask],
+                        marker=markers[j % len(markers)],
+                        color=colormap(i % colormap.N),
+                        label=f"{color_category} / {marker_category}",
+                    )
 
-    ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5))
+        ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5))
+
     fig.tight_layout()
-    fig.savefig(path)
+    fig.savefig(path, bbox_inches='tight')
     return fig
 
 
@@ -203,21 +213,39 @@ def main():
     print("--------------")
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    type_label = "Bacteria"
+    type_labels = ["Bacteria", "Fungi"]  # Liste der zu verarbeitenden Typen
+    years = 2019
 
-    # If a good perplexity is unknown, scan first and inspect the plot.
-    scan = scan_perplexity(type_label, "Genus", years=2019, crops=crops)
-    plot_perplexity_scan(scan, path=f"ordination_perplexity_{type_label}.jpg")
+    # Dictionaries zum Sammeln der Ergebnisse
+    all_scans = {}
+    all_results = {}
 
-    result = ordination(
-        type_label,
-        "Genus",
-        perplexity=15,
-        years=2019,
-        crops=crops,
+    for type_label in type_labels:
+        print(f"Processing {type_label}...")
+        
+        scan = scan_perplexity(type_label, "Genus", years=years, crops=crops)
+        all_scans[type_label] = scan
+        
+        result = ordination(
+            type_label,
+            "Genus",
+            perplexity=15,
+            years=years,
+            crops=crops,
+        )
+        
+        result.embedding.to_csv(f"ordination_{type_label}.csv")
+        
+        all_results[type_label] = result
+
+    print("Plotting combined results...")
+    plot_perplexity_scan_multi(all_scans, path="FigS1_perplexity_combined.png")
+    plot_ordination_multi(
+        all_results, 
+        "Habitat", 
+        "Crop", 
+        path="Fig1_ordination_combined.png"
     )
-    result.embedding.to_csv(f"ordination_{type_label}.csv")
-    plot_ordination(result, "Habitat", "Crop", path=f"ordination_{type_label}.jpg")
 
     # To quantify the separation this plot shows (PERMANOVA) and check it is a
     # location shift rather than unequal dispersion (PERMDISP), see
