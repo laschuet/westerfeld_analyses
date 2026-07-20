@@ -131,20 +131,49 @@ def plot_perplexity_scan_multi(scans, path="FigS1_perplexity_combined.png"):
         `scans` is a dictionary: {'Bacteria': scan_df, 'Fungi': scan_df}
     """
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    labels = ['A', 'C', 'B', 'D']
+    label_idx = 0
     
     for col_idx, (type_label, scan) in enumerate(scans.items()):
-        # KL Divergence
-        axes[0, col_idx].plot(scan.index, scan["kl_divergence"])
-        axes[0, col_idx].set_title(f"{type_label}: KL Divergence")
-        axes[0, col_idx].set_ylabel(r"$D_{KL}$")
-        axes[0, col_idx].grid(True)
         
-        # Trustworthiness 
-        axes[1, col_idx].plot(scan.index, scan["trustworthiness"])
-        axes[1, col_idx].set_title(f"{type_label}: Trustworthiness")
+        # 1. Zuerst das Maximum der Trustworthiness finden (für beide Plots gleich)
+        max_trust_idx = scan["trustworthiness"].idxmax()
+        max_trust_val = scan["trustworthiness"].max()
+        
+        # Den zugehörigen KL-Wert an dieser Stelle finden
+        kl_at_max_trust = scan.loc[max_trust_idx, "kl_divergence"]
+
+        # --- Trustworthiness Plot ---
+        axes[0, col_idx].plot(scan.index, scan["trustworthiness"])
+        axes[0, col_idx].set_title(f"{type_label}: Trustworthiness")
+        axes[0, col_idx].set_ylabel("trustworthiness")
+        axes[0, col_idx].grid(True)
+
+        # Punkt bei der Trustworthiness einzeichnen
+        axes[0, col_idx].scatter(max_trust_idx, max_trust_val, color='red', s=100, zorder=5, label='Maximum')
+        axes[0, col_idx].legend()
+
+        # --- KL Divergence Plot ---
+        axes[1, col_idx].plot(scan.index, scan["kl_divergence"])
+        axes[1, col_idx].set_title(f"{type_label}: KL Divergence")
         axes[1, col_idx].set_xlabel("perplexity")
-        axes[1, col_idx].set_ylabel("trustworthiness")
+        axes[1, col_idx].set_ylabel(r"$D_{KL}$")
         axes[1, col_idx].grid(True)
+        
+        # Punkt bei der KL-Divergenz einzeichnen, der zur max Trustworthiness gehört
+        axes[1, col_idx].scatter(max_trust_idx, kl_at_max_trust, color='red', s=100, zorder=5, label='Selected Perplexity')
+        axes[1, col_idx].legend()
+
+        # Label für den oberen Plot
+        axes[0, col_idx].text(0.05, 0.95, labels[label_idx], transform=axes[0, col_idx].transAxes, 
+                              fontsize=16, fontweight='bold', va='top')
+        label_idx += 1
+        
+        # Label für den unteren Plot
+        axes[1, col_idx].text(0.05, 0.95, labels[label_idx], transform=axes[1, col_idx].transAxes, 
+                              fontsize=16, fontweight='bold', va='top')
+        label_idx += 1
 
     fig.tight_layout()
     fig.savefig(path)
