@@ -220,7 +220,6 @@ def plot_ncm_combined_grid(results_nested, path="Fig2_ncm.png"):
                     xycoords='axes fraction', textcoords='offset points',
                     size='large', ha='center', va='bottom', fontweight='bold')
 
-    # Suptitle entfernt (wie gewünscht)
 
     # Legende nur einmal hinzufügen (aus dem ersten Plot)
     handles, labels = axs[0, 0].get_legend_handles_labels()
@@ -369,9 +368,9 @@ def build_category_splits(pivot: pd.DataFrame) -> dict:
     }
 
 
-def build_prediction_contingency(pivot: pd.DataFrame) -> pd.DataFrame:
-    fs_pred = pivot["Prediction"]["FS"].fillna("neutral").replace({"neutral": "within"})
-    rh_pred = pivot["Prediction"]["RH"].fillna("neutral").replace({"neutral": "within"})
+def build_prediction_contingency(pivot: pd.DataFrame):
+    fs_pred = pivot["Prediction"]["FS"].fillna("neutral")
+    rh_pred = pivot["Prediction"]["RH"].fillna("neutral")
     contingency = pd.crosstab(
         fs_pred,
         rh_pred,
@@ -379,50 +378,87 @@ def build_prediction_contingency(pivot: pd.DataFrame) -> pd.DataFrame:
         colnames=["RH"],
         dropna=False,
     )
-    contingency = contingency.reindex(index=["above", "below", "within"], columns=["above", "below", "within"], fill_value=0)
+    contingency = contingency.reindex(index=["above", "below", "neutral"], columns=["above", "below", "neutral"], fill_value=0)
     return contingency
 
-def plot_prediction_contingency_table(pivot: pd.DataFrame, type_label: str) -> None:
-    contingency = build_prediction_contingency(pivot)
+def plot_combined_contingency(pivot_fungi: pd.DataFrame, pivot_bacteria: pd.DataFrame, path="ncm_combined_contingency.png"):
+    """
+    Erstellt eine Figure mit zwei Kontigenztabellen übereinander.
+    Oben: Fungi (A), Unten: Bacteria (B).
+    """
+    
+    # 2 Zeilen, 1 Spalte
+    fig, axs = plt.subplots(2, 1, figsize=(10, 8)) 
+    
+    # Liste der Daten und Labels
+    data = [(pivot_fungi, "Fungi", "A"), (pivot_bacteria, "Bacteria", "B")]
 
-    rows = contingency.index.tolist()
-    cols = contingency.columns.tolist()
-    cell_text = contingency.astype(int).values.tolist()
+    for ax, (pivot, type_name, panel_label) in zip(axs, data):
+        contingency = build_prediction_contingency(pivot)
+        
+        rows = contingency.index.tolist()
+        cols = contingency.columns.tolist()
+        cell_text = contingency.astype(int).values.tolist()
 
-    cell_colors = []
-    for fs_pred in rows:
-        row_colors = []
-        for rh_pred in cols:
-            if fs_pred == rh_pred:
-                row_colors.append("lightgray")
-            elif {fs_pred, rh_pred} == {"above", "below"}:
-                row_colors.append("royalblue")
-            else:
-                row_colors.append("skyblue")
-        cell_colors.append(row_colors)
+        # Farben berechnen
+        cell_colors = []
+        for fs_pred in rows:
+            row_colors = []
+            for rh_pred in cols:
+                if fs_pred == rh_pred:
+                    row_colors.append("#B5BABB") 
+                elif {fs_pred, rh_pred} == {"above", "below"}:
+                    row_colors.append("#4169E1")
+                else:
+                    row_colors.append("#B0C4DE")
+            cell_colors.append(row_colors)
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.axis("off")
-    table = ax.table(
-        cellText=cell_text,
-        rowLabels=rows,
-        colLabels=cols,
-        cellColours=cell_colors,
-        cellLoc="center",
-        loc="center",
-    )
-    table.auto_set_font_size(False)
-    table.set_fontsize(10)
-    table.scale(1.2, 1.2)
+        ax.axis("off")
+        
+        table = ax.table(
+            cellText=cell_text,
+            rowLabels=rows,
+            colLabels=cols,
+            cellColours=cell_colors,
+            cellLoc="center",
+            loc="center",
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.2, 1.2)
 
-    ax.set_title(f"Kontingenztabelle Prediction - {type_label}", pad=20)
+        # --- Beschriftungen mit absoluten Koordinaten ---
+        
+        # Wir holen uns die Position der Tabelle, um die Labels exakt zu platzieren
+        # Die Tabelle ist bei loc='center' zentriert.
+        # Wir nutzen ax.transData, um in Datenkoordinaten zu zeichnen.
+        
+        # 1. Panel Label (A / B) oben links in der Ecke der Achse
+        ax.text(0.02, 0.98, panel_label, transform=ax.transAxes,
+                fontsize=14, fontweight='bold', verticalalignment='top')
 
-    output_path = f"ncm_prediction_contingency_{type_label}.png"
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+        # 2. Typen-Beschriftung (Fungi / Bacteria) oben mittig
+        ax.annotate(type_name, xy=(0.5, 1.02), xycoords='axes fraction',
+                    ha='center', va='bottom', fontsize=12, fontweight='bold')
+
+        # 3. Rhizosphere (Oben über der Tabelle)
+        # Wir platzieren es bei y=1.05 (Datenkoordinaten sind hier ungefähr 0 bis 4 für die Zeilen)
+        # Da die Tabelle 3 Zeilen hat (0,1,2), ist y=3 die obere Kante. Wir setzen es auf y=3.2
+        ax.annotate("Rhizosphere", xy=(0.5, 0.75), xycoords='axes fraction',
+            ha='center', va='bottom', fontsize=10, fontweight='bold')
+
+        # 4. Field Soil (Links neben der Tabelle)
+        # Die Tabelle hat 3 Spalten. x=0 ist die linke Kante. Wir setzen es auf x=-0.5
+        ax.annotate("Field Soil", xy=(-0.2, 0.5), xycoords='axes fraction',
+            ha='right', va='center', fontsize=10, fontweight='bold', rotation=90)
+
+    # --- Manuelle Abstandskorrektur ---
+    # Wir erzwingen, dass der Plotrand direkt an die Tabelle grenzt
+    plt.subplots_adjust(left=0.2, right=0.9, top=0.9, bottom=0.1, hspace=0.3)
+    
+    fig.savefig(path, dpi=300)
     plt.close(fig)
-    print(f"Prediction contingency plot written: {output_path}")
-
+    print(f"Combined contingency plot written: {path}")
 
 def export_report(pivot: pd.DataFrame, categories: dict, type_label: str) -> None:
     drop_columns = [
@@ -467,9 +503,11 @@ def main():
     # Liste der Typen, die berechnet werden sollen
     type_labels = ["Fungi", "Bacteria"] 
 
-    # Dictionary zum Speichern der Ergebnisse nach Typ für den kombinierten Plot
-    # Struktur: { "Fungi": [res_FS, res_RH], "Bacteria": [res_FS, res_RH] }
+    # Dictionary zum Speichern der Ergebnisse nach Typ für den kombinierten NCM-Plot
     all_results_nested = {}
+
+    # NEU: Dictionary zum Speichern der Pivots für den kombinierten Contingency-Plot
+    all_pivots = {}
 
     for type_label in type_labels:
         print(f"\nProcessing Type: {type_label}")
@@ -478,17 +516,17 @@ def main():
             result = ncm(
                 type_label,
                 habitat,
-                "Genus",  # Annahme: Taxonomie-Level ist gleich, ggf. anpassen
+                "Genus",
                 years=2019,
                 habitats=habitat,
                 crops=crops,
             )
             results.append(result)
         
-        # Speichern für den kombinierten Plot
+        # Speichern für den kombinierten NCM-Plot
         all_results_nested[type_label] = results
 
-        # --- Analyse pro Typ (wie bisher) ---
+        # --- Analyse pro Typ ---
         taxa_dfs = []
         for r in results:
             df_taxa = taxa_bounds(r)
@@ -529,8 +567,10 @@ def main():
             pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
             categories = build_category_splits(pivot)
 
-            # Plots und Reports pro Typ speichern
-            plot_prediction_contingency_table(pivot, type_label)
+            # --- NEU: Pivot für den kombinierten Plot speichern ---
+            all_pivots[type_label] = pivot
+
+            # Reports speichern (wahrscheinlich willst du die trotzdem behalten)
             export_report(pivot, categories, type_label)
 
         summary = compare_ncm_results(results)
@@ -542,9 +582,14 @@ def main():
             print(overlap)
             overlap.to_csv(f"ncm_overlap_{type_label}_{partition}.csv")
 
-    # --- Kombinierter Plot am Ende ---
-    print("\nGenerating combined plot...")
+    # --- Kombinierter NCM Plot ---
+    print("\nGenerating combined NCM plot...")
     plot_ncm_combined_grid(all_results_nested, path="Fig2_ncm.png")
+
+    # --- NEU: Kombinierter Contingency Plot ---
+    print("\nGenerating combined contingency plot...")
+    if "Fungi" in all_pivots and "Bacteria" in all_pivots:
+        plot_combined_contingency(all_pivots["Fungi"], all_pivots["Bacteria"], path="Fig3_contingency.png")
 
 
 if __name__ == "__main__":
