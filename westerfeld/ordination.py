@@ -242,33 +242,52 @@ def main():
     print("--------------")
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    type_labels = ["Bacteria", "Fungi"]  # Liste der zu verarbeitenden Typen
+    type_labels = ["Bacteria", "Fungi"]
     years = 2019
 
     # Dictionaries zum Sammeln der Ergebnisse
     all_scans = {}
     all_results = {}
-
+    
+    # 1. Scan durchführen
     for type_label in type_labels:
-        print(f"Processing {type_label}...")
-        
+        print(f"Scanning perplexity for {type_label}...")
         scan = scan_perplexity(type_label, "Genus", years=years, crops=crops)
         all_scans[type_label] = scan
+
+    # 2. Plot der Scans erzeugen (wie vorher)
+    plot_perplexity_scan_multi(all_scans, path="FigS1_perplexity_combined.png")
+
+    # 3. Optimale Perplexities aus den Scans extrahieren
+    optimal_perplexities = {}
+    for type_label, scan in all_scans.items():
+        # idxmax() gibt den Index (also die Perplexity) zurück, bei der Trust max ist
+        best_perp = scan["trustworthiness"].idxmax()
+        
+        # Optional: Zur Kontrolle ausgeben
+        print(f"Optimal perplexity for {type_label}: {best_perp}")
+        
+        optimal_perplexities[type_label] = best_perp
+
+    # 4. Ordination mit den optimalen Werten durchführen
+    for type_label in type_labels:
+        # Wir holen uns die Perplexity aus unserem Dictionary
+        current_perplexity = optimal_perplexities[type_label]
+        
+        print(f"Calculating Ordination for {type_label} with perplexity={current_perplexity}...")
         
         result = ordination(
             type_label,
             "Genus",
-            perplexity=15,
+            perplexity=current_perplexity,  # Hier übergeben wir den dynamischen Wert
             years=years,
             crops=crops,
         )
         
         result.embedding.to_csv(f"ordination_{type_label}.csv")
-        
         all_results[type_label] = result
 
-    print("Plotting combined results...")
-    plot_perplexity_scan_multi(all_scans, path="FigS1_perplexity_combined.png")
+    # 5. Kombinierten Ordination-Plot erzeugen
     plot_ordination_multi(
         all_results, 
         "Habitat", 
