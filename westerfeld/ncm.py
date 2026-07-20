@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from lmfit import Parameters, Model
 
+# Hinweis: Diese Module müssen in deinem Projekt vorhanden sein
 from _preparation import common_preparation, rarefied_taxa_table, relative_abundances
 from _utils import calc_iou
 
@@ -127,54 +128,106 @@ def plot_ncm(result, ax):
     ax.set_ylim(0, 1)
 
     x, y = result.x, result.y
-    ax.plot(x, result.best_fit, color="#0D18B3", linewidth=1)
+    ax.plot(x, result.best_fit, color="#4169E1", linewidth=1)
 
-    ax.plot(x, result.low_bound, color="#E72F52", linewidth=1, linestyle="--")
-    ax.plot(x, result.high_bound, color="#E72F52", linewidth=1, linestyle="--")
+    ax.plot(x, result.low_bound, color="#B0C4DE", linewidth=1, linestyle="--")
+    ax.plot(x, result.high_bound, color="#B0C4DE", linewidth=1, linestyle="--")
     ax.fill_between(x, result.low_bound, result.high_bound, color="#B5BABB")
 
     below = y < result.low_bound
     above = y > result.high_bound
     neutral = (y >= result.low_bound) & (y <= result.high_bound)
-    ax.scatter(x[below], y[below], color="#BACA08", s=1, label="below prediction")
-    ax.scatter(x[above], y[above], color="#089453", s=1, label="above prediction")
-    ax.scatter(x[neutral], y[neutral], color="#000000", s=1)
+    ax.scatter(x[below], y[below], color="#FF8C00", s=1, label="Below prediction")
+    ax.scatter(x[above], y[above], color="#228B22", s=1, label="Above prediction")
+    ax.scatter(x[neutral], y[neutral], color="#696969", s=1)
 
     return ax
 
 
-def plot_ncm_grid(results, path="ncm.pdf", ncols=2):
-    n = len(results)
-    ncols = min(ncols, n)
-    nrows = math.ceil(n / ncols)
+def plot_ncm_combined_grid(results_nested, path="Fig2_ncm.png"):
+    """
+    Erstellt ein 2x2 Plot-Grid für Fungi und Bacteria.
+    Oben: Fungi, Unten: Bacteria.
+    Links: Field Soil, Rechts: Rhizosphere.
+    """
+    
+    # Reihenfolge festlegen
+    types_order = ["Fungi", "Bacteria"]
+    habitats_order = ["Field_Soil", "Rhizosphere"]
+    
     fig, axs = plt.subplots(
-        nrows,
-        ncols,
-        figsize=(6 * ncols, 5 * nrows),
-        squeeze=False,
+        2, 2,
+        figsize=(12, 10),
         sharex=True,
         sharey=True,
         layout="constrained",
     )
-    axs = axs.reshape(-1)
 
-    for ax, result in zip(axs, results):
-        plot_ncm(result, ax=ax)
-    for ax in axs[n:]:
-        ax.set_visible(False)
+    # Liste der Panel-Labels
+    panel_labels = ["A", "B", "C", "D"]
 
-    type_labels = {result.type_label for result in results}
-    title = "Neutral community model"
-    if len(type_labels) == 1:
-        title += f" of {next(iter(type_labels))}"
-    fig.suptitle(title)
-    fig.supxlabel("log(Mean relative abundance)")
-    fig.supylabel("Occurrence frequency")
+    # Ergebnisse in die Achsen zeichnen
+    label_idx = 0
+    for row_idx, type_label in enumerate(types_order):
+        results = results_nested.get(type_label, [])
+        for col_idx, habitat_label in enumerate(habitats_order):
+            # Finde das passende Ergebnis für diesen Habitat
+            res = next((r for r in results if r.label == habitat_label), None)
+            
+            ax = axs[row_idx, col_idx]
+            
+            if res:
+                plot_ncm(res, ax=ax)
+                ax.set_title("")  # Standard-Titel entfernen
 
-    handles, labels = axs[0].get_legend_handles_labels()
+                # Panel Label (A, B, C, D) oben links
+                ax.text(0.02, 0.98, panel_labels[label_idx], transform=ax.transAxes,
+                        fontsize=14, fontweight='bold', verticalalignment='top',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="none", alpha=0.8))
+
+                # R^2 etwas darunter schreiben
+                text_str = f"$R^2 = {res.rsquared:.4f}$"
+                ax.text(0.05, 0.88, text_str, transform=ax.transAxes,
+                        fontsize=10, verticalalignment='top',
+                        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8, edgecolor="none"))
+
+                # Y-Achsen-Label nur links
+                if col_idx == 0:
+                    ax.set_ylabel("Occurrence frequency")
+                else:
+                    ax.set_ylabel("")
+                    
+                # X-Achsen-Label nur unten
+                if row_idx == 1:
+                    ax.set_xlabel("log(Mean relative abundance)")
+                else:
+                    ax.set_xlabel("")
+            else:
+                ax.text(0.5, 0.5, "No Data", ha="center")
+
+            label_idx += 1
+
+    # --- Beschriftungen der Zeilen (Fungi / Bacteria) ---
+    for ax, row_name in zip(axs[:, 0], types_order):
+        ax.annotate(row_name, xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - 5, 0),
+                    xycoords=ax.yaxis.label, textcoords='offset points',
+                    size='large', ha='right', va='center', rotation=90, fontweight='bold')
+
+    # --- Beschriftungen der Spalten (Field Soil / Rhizosphere) ---
+    for ax, col_name in zip(axs[0, :], habitats_order):
+        display_name = col_name.replace("_", " ")
+        ax.annotate(display_name, xy=(0.5, 1), xytext=(0, 10),
+                    xycoords='axes fraction', textcoords='offset points',
+                    size='large', ha='center', va='bottom', fontweight='bold')
+
+    # Suptitle entfernt (wie gewünscht)
+
+    # Legende nur einmal hinzufügen (aus dem ersten Plot)
+    handles, labels = axs[0, 0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="outside upper right", markerscale=5)
 
-    fig.savefig(path)
+    fig.savefig(path, dpi=300)
+    print(f"Combined plot written: {path}")
     return fig
 
 
@@ -329,59 +382,6 @@ def build_prediction_contingency(pivot: pd.DataFrame) -> pd.DataFrame:
     contingency = contingency.reindex(index=["above", "below", "within"], columns=["above", "below", "within"], fill_value=0)
     return contingency
 
-
-def plot_category_counts(pivot: pd.DataFrame, type_label: str) -> None:
-    order = [
-        "Consistently Neutral",
-        "Consistently Above",
-        "Consistently Below",
-        "FS Above",
-        "FS Below",
-        "RH Above",
-        "RH Below",
-        "Opposite",
-    ]
-
-    counts = pivot["Category"].value_counts().reindex(order, fill_value=0)
-
-    color_map = {
-        "Consistently Neutral": "lightgray",
-        "Consistently Above": "lightgray",
-        "Consistently Below": "lightgray",
-        "FS Above": "skyblue",
-        "FS Below": "skyblue",
-        "RH Above": "skyblue",
-        "RH Below": "skyblue",
-        "Opposite": "royalblue",
-    }
-    colors = [color_map[cat] for cat in counts.index]
-
-    fig, ax = plt.subplots(figsize=(11, 6))
-    bars = ax.bar(counts.index, counts.values, color=colors)
-
-    ax.set_title(f"Taxa pro Kategorie - {type_label}")
-    ax.set_ylabel("Anzahl Taxa")
-    ax.set_xlabel("Kategorie")
-    ax.set_xticks(range(len(counts.index)))
-    ax.set_xticklabels(counts.index, rotation=30, ha="right")
-
-    for bar, value in zip(bars, counts.values):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.5,
-            str(int(value)),
-            ha="center",
-            va="bottom",
-            fontsize=9,
-        )
-
-    output_path = f"ncm_category_counts_{type_label}.png"
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Category count plot written: {output_path}")
-
-
 def plot_prediction_contingency_table(pivot: pd.DataFrame, type_label: str) -> None:
     contingency = build_prediction_contingency(pivot)
 
@@ -464,76 +464,87 @@ def main():
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
     habitats = ["Field_Soil", "Rhizosphere"]
-    type_label = "Fungi"
+    # Liste der Typen, die berechnet werden sollen
+    type_labels = ["Fungi", "Bacteria"] 
 
-    results = []
-    for habitat in habitats:
-        result = ncm(
-            type_label,
-            habitat,
-            "Genus",
-            years=2019,
-            habitats=habitat,
-            crops=crops,
-        )
-        results.append(result)
+    # Dictionary zum Speichern der Ergebnisse nach Typ für den kombinierten Plot
+    # Struktur: { "Fungi": [res_FS, res_RH], "Bacteria": [res_FS, res_RH] }
+    all_results_nested = {}
 
-    # Build taxa table from results (replaces previous external taxa_bounds files)
-    taxa_dfs = []
-    for r in results:
-        df_taxa = taxa_bounds(r)
-        taxa_dfs.append(df_taxa)
-    if taxa_dfs:
-        df_all = pd.concat(taxa_dfs, ignore_index=True)
+    for type_label in type_labels:
+        print(f"\nProcessing Type: {type_label}")
+        results = []
+        for habitat in habitats:
+            result = ncm(
+                type_label,
+                habitat,
+                "Genus",  # Annahme: Taxonomie-Level ist gleich, ggf. anpassen
+                years=2019,
+                habitats=habitat,
+                crops=crops,
+            )
+            results.append(result)
+        
+        # Speichern für den kombinierten Plot
+        all_results_nested[type_label] = results
 
-        # ensure full Taxa x Habitat combinations (match previous behavior)
-        taxa = df_all["Taxa"].unique()
-        habitats_codes = ["FS", "RH"]
-        full = pd.DataFrame([(t, h) for t in taxa for h in habitats_codes], columns=["Taxa", "Habitat"])
-        df_all = pd.merge(full, df_all, on=["Taxa", "Habitat"], how="left")
+        # --- Analyse pro Typ (wie bisher) ---
+        taxa_dfs = []
+        for r in results:
+            df_taxa = taxa_bounds(r)
+            taxa_dfs.append(df_taxa)
+        
+        if taxa_dfs:
+            df_all = pd.concat(taxa_dfs, ignore_index=True)
 
-        # fill defaults for missing combinations
-        df_all["Prediction"] = df_all["Prediction"].fillna("neutral").astype(str).str.strip().replace({"": "neutral"})
-        if "Mean Relative Abundance" in df_all.columns:
-            df_all["Mean Relative Abundance"] = df_all["Mean Relative Abundance"].fillna(0)
-        if "Occurrence Frequency" in df_all.columns:
-            df_all["Occurrence Frequency"] = df_all["Occurrence Frequency"].fillna(0)
+            # ensure full Taxa x Habitat combinations
+            taxa = df_all["Taxa"].unique()
+            habitats_codes = ["FS", "RH"]
+            full = pd.DataFrame([(t, h) for t in taxa for h in habitats_codes], columns=["Taxa", "Habitat"])
+            df_all = pd.merge(full, df_all, on=["Taxa", "Habitat"], how="left")
 
-        pivot = df_all.pivot_table(
-            index="Taxa",
-            columns="Habitat",
-            values=[
-                "Mean Relative Abundance",
-                "Occurrence Frequency",
-                "Prediction",
-            ],
-            aggfunc="first",
-        )
+            # fill defaults
+            df_all["Prediction"] = df_all["Prediction"].fillna("neutral").astype(str).str.strip().replace({"": "neutral"})
+            if "Mean Relative Abundance" in df_all.columns:
+                df_all["Mean Relative Abundance"] = df_all["Mean Relative Abundance"].fillna(0)
+            if "Occurrence Frequency" in df_all.columns:
+                df_all["Occurrence Frequency"] = df_all["Occurrence Frequency"].fillna(0)
 
-        # community sizes from fitted results (map labels to FS/RH if needed)
-        label_map = {"Field_Soil": "FS", "Rhizosphere": "RH"}
-        community_sizes = {
-            label_map.get(r.label, r.label): int(r.N) for r in results
-        }
+            pivot = df_all.pivot_table(
+                index="Taxa",
+                columns="Habitat",
+                values=[
+                    "Mean Relative Abundance",
+                    "Occurrence Frequency",
+                    "Prediction",
+                ],
+                aggfunc="first",
+            )
 
-        pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
-        categories = build_category_splits(pivot)
+            label_map = {"Field_Soil": "FS", "Rhizosphere": "RH"}
+            community_sizes = {
+                label_map.get(r.label, r.label): int(r.N) for r in results
+            }
 
-        # generate plots and report
-        plot_category_counts(pivot, type_label)
-        plot_prediction_contingency_table(pivot, type_label)
-        export_report(pivot, categories, type_label)
+            pivot = compute_core_metrics(pivot, community_sizes=community_sizes)
+            categories = build_category_splits(pivot)
 
-    plot_ncm_grid(results, path=f"ncm_{type_label}.pdf")
+            # Plots und Reports pro Typ speichern
+            plot_prediction_contingency_table(pivot, type_label)
+            export_report(pivot, categories, type_label)
 
-    summary = compare_ncm_results(results)
-    print(summary)
-    summary.to_csv(f"ncm_summary_{type_label}.csv")
+        summary = compare_ncm_results(results)
+        print(summary)
+        summary.to_csv(f"ncm_summary_{type_label}.csv")
 
-    for partition in ("above", "below", "neutral"):
-        overlap = compare_ncm_partitions(results, partition)
-        print(overlap)
-        overlap.to_csv(f"ncm_overlap_{type_label}_{partition}.csv")
+        for partition in ("above", "below", "neutral"):
+            overlap = compare_ncm_partitions(results, partition)
+            print(overlap)
+            overlap.to_csv(f"ncm_overlap_{type_label}_{partition}.csv")
+
+    # --- Kombinierter Plot am Ende ---
+    print("\nGenerating combined plot...")
+    plot_ncm_combined_grid(all_results_nested, path="Fig2_ncm.png")
 
 
 if __name__ == "__main__":
