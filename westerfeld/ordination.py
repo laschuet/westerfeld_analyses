@@ -187,17 +187,16 @@ def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordinati
     """
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
+    my_colors = ['#FF8C00', '#2E8B57'] 
+    
     for ax, (type_label, result) in zip(axes, results.items()):
         x = result.embedding["x"].to_numpy()
         y = result.embedding["y"].to_numpy()
         color_values = result.embedding.index.get_level_values(color_by)
-        colormap = plt.get_cmap("tab10")
-
+        
         ax.set_title(
-            f"t-SNE of {type_label} abundances\n"
-            f"(n={len(x)}, perplexity={result.perplexity},\n"
-            rf"$D_{{KL}}$={result.kl_divergence:.4f}, "
-            f"trustworthiness={result.trustworthiness:.4f})"
+            f"{type_label}\n"
+            f"(n={len(x)}, perplexity={result.perplexity}, $D_{{KL}}$={result.kl_divergence:.4f}, trust={result.trustworthiness:.4f})"
         )
         ax.set_xlabel("t-SNE 1")
         ax.set_ylabel("t-SNE 2")
@@ -205,15 +204,24 @@ def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordinati
         if marker_by is None:
             for i, color_category in enumerate(np.unique(color_values)):
                 mask = color_values == color_category
+                current_color = my_colors[i % len(my_colors)]
                 ax.scatter(
                     x[mask],
                     y[mask],
-                    color=colormap(i % colormap.N),
+                    color=current_color,
                     label=str(color_category),
                 )
         else:
             marker_values = result.embedding.index.get_level_values(marker_by)
-            markers = Line2D.filled_markers
+            markers = ['o', '^'] 
+
+            abbreviations = {
+                "Field_Soil": "FS",
+                "Winter wheat 1": "WW1",
+                "Winter wheat 2": "WW2",
+                "Rhizosphere": "RH"
+            }
+            
             for i, color_category in enumerate(np.unique(color_values)):
                 for j, marker_category in enumerate(np.unique(marker_values)):
                     mask = (color_values == color_category) & (
@@ -221,15 +229,36 @@ def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordinati
                     )
                     if not mask.any():
                         continue
+                    
+                    current_color = my_colors[i % len(my_colors)]
+                    current_marker = markers[j % len(markers)]
+                    
                     ax.scatter(
                         x[mask],
                         y[mask],
-                        marker=markers[j % len(markers)],
-                        color=colormap(i % colormap.N),
-                        label=f"{color_category} / {marker_category}",
+                        marker=current_marker,
+                        color=current_color,
                     )
 
-        ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5))
+    legend_elements = []
+
+    unique_colors = np.unique([abbreviations.get(cat, cat) for result in results.values() for cat in result.embedding.index.get_level_values(color_by)])
+    unique_markers = np.unique([abbreviations.get(cat, cat) for result in results.values() for cat in result.embedding.index.get_level_values(marker_by)])
+
+    color_map = {cat: my_colors[i % len(my_colors)] for i, cat in enumerate(np.unique([abbreviations.get(cat, cat) for result in results.values() for cat in result.embedding.index.get_level_values(color_by)]))}
+    
+    legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', label='Habitat', markerfacecolor='none', markersize=0))
+    for cat in unique_colors:
+        legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map.get(cat, 'black'), markersize=10, label=cat))
+
+    legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', label='Crop', markerfacecolor='none', markersize=0))
+    
+    marker_map = {'WW1': 'o', 'WW2': '^'}
+    for cat in unique_markers:
+        if cat in marker_map:
+            legend_elements.append(plt.Line2D([0], [0], marker=marker_map[cat], color='black', markerfacecolor='black', markersize=10, label=cat))
+
+    fig.legend(handles=legend_elements, loc='center left', bbox_to_anchor=(1.0, 0.5))
 
     fig.tight_layout()
     fig.savefig(path, bbox_inches='tight')
@@ -242,36 +271,25 @@ def main():
     print("--------------")
 
     crops = ["Winter wheat 1", "Winter wheat 2"]
-    type_labels = ["Bacteria", "Fungi"]
+    type_labels = ["Fungi", "Bacteria"]
     years = 2019
 
-    # Dictionaries zum Sammeln der Ergebnisse
     all_scans = {}
     all_results = {}
     
-    # 1. Scan durchführen
     for type_label in type_labels:
         print(f"Scanning perplexity for {type_label}...")
         scan = scan_perplexity(type_label, "Genus", years=years, crops=crops)
         all_scans[type_label] = scan
 
-    # 2. Plot der Scans erzeugen (wie vorher)
     plot_perplexity_scan_multi(all_scans, path="FigS1_perplexity_combined.png")
 
-    # 3. Optimale Perplexities aus den Scans extrahieren
     optimal_perplexities = {}
     for type_label, scan in all_scans.items():
-        # idxmax() gibt den Index (also die Perplexity) zurück, bei der Trust max ist
-        best_perp = scan["trustworthiness"].idxmax()
-        
-        # Optional: Zur Kontrolle ausgeben
-        print(f"Optimal perplexity for {type_label}: {best_perp}")
-        
+        best_perp = scan["trustworthiness"].idxmax()      
         optimal_perplexities[type_label] = best_perp
 
-    # 4. Ordination mit den optimalen Werten durchführen
     for type_label in type_labels:
-        # Wir holen uns die Perplexity aus unserem Dictionary
         current_perplexity = optimal_perplexities[type_label]
         
         print(f"Calculating Ordination for {type_label} with perplexity={current_perplexity}...")
@@ -279,7 +297,7 @@ def main():
         result = ordination(
             type_label,
             "Genus",
-            perplexity=current_perplexity,  # Hier übergeben wir den dynamischen Wert
+            perplexity=current_perplexity,  
             years=years,
             crops=crops,
         )
@@ -287,7 +305,6 @@ def main():
         result.embedding.to_csv(f"ordination_{type_label}.csv")
         all_results[type_label] = result
 
-    # 5. Kombinierten Ordination-Plot erzeugen
     plot_ordination_multi(
         all_results, 
         "Habitat", 
