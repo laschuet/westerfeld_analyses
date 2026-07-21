@@ -70,6 +70,129 @@ def _build_taxon_lookup(df_long, taxonomy, kingdom):
         index=lookup_index,
     )
 
+def plot_graphs_by_edge_type(
+    graphs,
+    labels,
+    path="graph_by_edge_type.png",
+    figsize=(18, 12),
+    node_size_active=100,
+    node_size_inactive=0,  # Auf 0 gesetzt, damit irrelevante Knoten komplett verschwinden
+    edge_width=1.5,
+):
+    """
+    Erstellt für jeden Input-Graphen drei Subplots: einen für jeden Edge-Type
+    (Fungi-Fungi, Bacteria-Bacteria, Fungi-Bacteria).
+    Knoten, die nicht zum aktuellen Edge-Type gehören, werden ausgeblendet.
+    """
+    import matplotlib.pyplot as plt
+    import networkx as nx
+
+    # Definieren der Edge-Types und Reihenfolge
+    edge_types = ["Fungi-Fungi", "Bacteria-Bacteria", "Fungi-Bacteria"]
+    
+    # Anzahl der Zeilen = Anzahl der Input-Graphen (z.B. Field, Rhizo)
+    # Anzahl der Spalten = Anzahl der Edge-Types (3)
+    n_rows = len(graphs)
+    n_cols = len(edge_types)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    
+    # Falls nur ein Graph übergeben wird, axes ist 1D, wir brauchen 2D für konsistentes Indexing
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+
+    # Farben für die Edge-Types (optional, für bessere Unterscheidung)
+    edge_colors_map = {
+        "Fungi-Fungi": "#1f77b4",      # Blau
+        "Bacteria-Bacteria": "#ff7f0e", # Orange
+        "Fungi-Bacteria": "#2ca02c",   # Grün
+    }
+
+    for i, (G, label) in enumerate(zip(graphs, labels)):
+        for j, e_type in enumerate(edge_types):
+            ax = axes[i, j]
+            
+            # 1. Filtere Kanten des aktuellen Typs
+            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == e_type]
+            
+            # 2. Bestimme die Knoten, die an diesen Kanten beteiligt sind
+            active_nodes = set()
+            for u, v in edges:
+                active_nodes.add(u)
+                active_nodes.add(v)
+            
+            # Erstelle einen Subgraphen, der nur diese Knoten und Kanten enthält
+            # Das macht das Plotten einfacher und sorgt dafür, dass Layout-Algorithmen
+            # sich nur auf den relevanten Teil konzentrieren.
+            if active_nodes:
+                G_sub = G.edge_subgraph(edges).copy()
+                # node_subgraph würde auch gehen, aber edge_subgraph impliziert die Knoten meist schon.
+                # Sicherstellen, dass nur die verbundenen Knoten drin sind:
+                G_sub = G_sub.subgraph(active_nodes)
+            else:
+                G_sub = nx.Graph()
+
+            if G_sub.number_of_nodes() == 0:
+                ax.text(0.5, 0.5, "No edges", ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f"{label}\n{e_type}")
+                ax.set_axis_off()
+                continue
+
+            # Layout berechnen (Seed für Reproduzierbarkeit)
+            # Wir nutzen hier das Layout auf dem Subgraphen, damit die Knoten nah beieinander liegen
+            pos = nx.spring_layout(G_sub, seed=42)
+
+            # Kanten zeichnen
+            nx.draw_networkx_edges(
+                G_sub,
+                pos,
+                edge_color=edge_colors_map.get(e_type, "gray"),
+                width=edge_width,
+                alpha=0.6,
+                ax=ax,
+            )
+
+            # Knoten zeichnen
+            # Wir färben die Knoten hier einfach nach ihrer Kingdom-Herkunft, 
+            # damit man sieht, wer wer ist (hilfreich bei Fungi-Bacteria)
+            node_colors = []
+            for node in G_sub.nodes():
+                # Annahme: Node-Name ist "Kingdom:Taxon", z.B. "Fungi:GenusX"
+                if "Fungi:" in node:
+                    node_colors.append("#1f77b4") # Blau für Pilze
+                elif "Bacteria:" in node:
+                    node_colors.append("#ff7f0e") # Orange für Bakterien
+                else:
+                    node_colors.append("gray")
+
+            nx.draw_networkx_nodes(
+                G_sub,
+                pos,
+                node_color=node_colors,
+                node_size=node_size_active,
+                ax=ax,
+            )
+            
+            # Optional: Labels (kann bei vielen Knoten unübersichtlich werden, erstmal auskommentiert)
+            # nx.draw_networkx_labels(G_sub, pos, font_size=8, ax=ax)
+
+            # Titel und Achsen
+            ax.set_title(f"{label} - {e_type}")
+            ax.set_axis_off()
+
+    # Legende für die Knotenfarben (Kingdoms)
+    legend_handles = [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#ff7f0e", markersize=10, label="Bacteria"),
+    ]
+    fig.legend(handles=legend_handles, loc="upper center", ncol=2, frameon=False)
+    
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Plot saved to {path}")
+    return path
 
 def plot_graphs_side_by_side_by_niche(
     graphs,
@@ -358,14 +481,29 @@ def main():
     print("\nPairwise nodes_iou for Bacteria nodes")
     print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Bacteria"))
 
+    # 1. Der normale Plot
     plot_graphs_side_by_side(
         graphs,
         labels,
-        path="graph_side_by_side.png",
-        figsize=(14, 7),
-        node_size=80,
-        edge_width=1.0,
+        path="graph_side_by_side_normal.png",
     )
+
+    # 2. Der neue Diff-Plot
+    plot_graphs_side_by_side(
+        graphs,
+        labels,
+        path="graph_side_by_side_diff.png",
+        diff_mode=True,  # Hier der Schalter!
+    )
+
+    plot_graphs_by_edge_type(
+        graphs,
+        labels,
+        path="graph_by_edge_type.png",
+        figsize=(18, 12), # Etwas breiter, da wir 3 Spalten haben
+        node_size_active=100,
+    )
+
     plot_graphs_side_by_side_by_niche(
         graphs,
         labels,
