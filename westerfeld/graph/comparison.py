@@ -172,7 +172,6 @@ def _edge_color(edge_type: str):
         "Fungi-Bacteria": "#9467bd",
     }.get(edge_type, "#7f7f7f")
 
-
 def plot_graphs_side_by_side(
     graphs: list[nx.Graph],
     labels: list[str],
@@ -180,57 +179,343 @@ def plot_graphs_side_by_side(
     figsize: tuple[float, float] = (14, 7),
     node_size: int = 80,
     edge_width: float = 1.0,
+    diff_mode: bool = False,  # NEU: Schalter für den Diff-Modus
 ):
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    from matplotlib.lines import Line2D
+
     fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
     if len(graphs) == 1:
         axes = [axes]
 
-    for ax, G, label in zip(axes, graphs, labels):
+    # --- Vorbereitung für den Diff-Mode ---
+    # Wir berechnen die Sets der Kanten für beide Graphen
+    if diff_mode and len(graphs) == 2:
+        edges_g1 = set(graphs[0].edges())
+        edges_g2 = set(graphs[1].edges())
+        
+        # Gemeinsame Kanten (Core)
+        common_edges = edges_g1.intersection(edges_g2)
+        # Kanten nur in G1
+        unique_g1 = edges_g1 - edges_g2
+        # Kanten nur in G2
+        unique_g2 = edges_g2 - edges_g1
+
+    # --- Plotting Loop ---
+    for i, (ax, G, label) in enumerate(zip(axes, graphs, labels)):
         if G.number_of_nodes() == 0:
             ax.set_axis_off()
             continue
 
-        pos = nx.spring_layout(G, seed=42)
+        # Layout berechnen (wir nutzen das gleiche Layout für beide Graphen im Diff-Mode, 
+        # damit die Knoten an der gleichen Stelle bleiben und man besser vergleichen kann)
+        # Im Normal-Mode berechnen wir es pro Graph, da die Knotenmengen ja unterschiedlich sein könnten
+        if diff_mode and len(graphs) == 2:
+            # Wir nutzen die Vereinigungsmenge der Knoten für das Layout, damit beide Plots identisch ausgerichtet sind
+            all_nodes = set(graphs[0].nodes()).union(set(graphs[1].nodes()))
+            # Erstelle einen temporären Graphen nur für das Layout
+            G_layout = nx.Graph()
+            G_layout.add_nodes_from(all_nodes)
+            # Füge alle Kanten hinzu, damit die Abstände stimmen
+            G_layout.add_edges_from(edges_g1.union(edges_g2))
+            pos = nx.spring_layout(G_layout, seed=42)
+        else:
+            pos = nx.spring_layout(G, seed=42)
 
-        for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
-            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
-            if not edges:
-                continue
-            nx.draw_networkx_edges(
+        if diff_mode and len(graphs) == 2:
+            # --- DIFF MODE LOGIK ---
+            
+            # Bestimme welche Kanten in diesem Graphen 'unique' sind
+            if i == 0:
+                current_unique = unique_g1
+            else:
+                current_unique = unique_g2
+
+            # 1. Zeichne gemeinsame Kanten (Grau, dünn)
+            if common_edges:
+                nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    edgelist=list(common_edges),
+                    edge_color="#d3d3d3", # Hellgrau
+                    width=edge_width * 0.5,
+                    alpha=0.4,
+                    ax=ax,
+                )
+
+            # 2. Zeichne unique Kanten (Farbig, dick)
+            if current_unique:
+                nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    edgelist=list(current_unique),
+                    edge_color="#d62728", # Rot (oder eine andere Signalfarbe)
+                    width=edge_width * 2.0,
+                    alpha=0.9,
+                    ax=ax,
+                )
+            
+            # Knoten zeichnen (Option A: Kingdom Colors)
+            nx.draw_networkx_nodes(
                 G,
                 pos,
-                edgelist=edges,
-                edge_color=_edge_color(edge_type),
-                width=edge_width,
-                alpha=0.8,
+                nodelist=list(G.nodes),
+                node_color=[_node_color(G, n) for n in G.nodes],
+                node_size=node_size,
                 ax=ax,
             )
 
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=list(G.nodes),
-            node_color=[_node_color(G, n) for n in G.nodes],
-            node_size=node_size,
-            ax=ax,
-        )
+            # Titel anpassen
+            ax.set_title(f"{label} (Diff Mode)")
 
-        ax.set_title(label)
+        else:
+            # --- NORMALER MODUS (Original Code) ---
+            for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
+                edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
+                if not edges:
+                    continue
+                nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    edgelist=edges,
+                    edge_color=_edge_color(edge_type),
+                    width=edge_width,
+                    alpha=0.8,
+                    ax=ax,
+                )
+
+            nx.draw_networkx_nodes(
+                G,
+                pos,
+                nodelist=list(G.nodes),
+                node_color=[_node_color(G, n) for n in G.nodes],
+                node_size=node_size,
+                ax=ax,
+            )
+
+            ax.set_title(label)
+
         ax.set_axis_on()
         ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
+    # --- Legende ---
+    if diff_mode and len(graphs) == 2:
+        legend_handles = [
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
+            Line2D([0], [0], color="#d62728", linewidth=2, label="Unique to this habitat"),
+            Line2D([0], [0], color="#d3d3d3", linewidth=2, label="Common in both"),
+        ]
+    else:
+        legend_handles = [
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
+            Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
+            Line2D([0], [0], color="#1f77b4", linewidth=2, label="Fungi-Fungi edge"),
+            Line2D([0], [0], color="#ff7f0e", linewidth=2, label="Bacteria-Bacteria edge"),
+            Line2D([0], [0], color="#9467bd", linewidth=2, label="Fungi-Bacteria edge"),
+        ]
+    
+    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+def plot_diff_grid(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "graph_diff_grid.png",
+    figsize: tuple[float, float] = (16, 16), # Quadratisch, da 2x2
+    node_size: int = 80,
+    edge_width: float = 1.0,
+):
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    from matplotlib.lines import Line2D
+
+    # Wir brauchen genau 2 Graphen für diesen Vergleich
+    if len(graphs) != 2:
+        raise ValueError("Diese Funktion benötigt genau 2 Graphen für den 2x2 Vergleich.")
+
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    
+    # axes ist ein 2D Array [[ax00, ax01], [ax10, ax11]]
+    # Wir flachen es nicht ab, sondern nutzen explizit die Indizes
+    
+    # --- Vorbereitung: Kanten berechnen ---
+    edges_g1 = set(graphs[0].edges())
+    edges_g2 = set(graphs[1].edges())
+    
+    common_edges = edges_g1.intersection(edges_g2)
+    unique_g1 = edges_g1 - edges_g2
+    unique_g2 = edges_g2 - edges_g1
+
+    # --- Layout berechnen ---
+    # Wir nutzen ein gemeinsames Layout für ALLE 4 Plots, damit man Knoten leicht vergleichen kann.
+    # Basis ist die Vereinigung aller Knoten und Kanten.
+    all_nodes = set(graphs[0].nodes()).union(set(graphs[1].nodes()))
+    G_layout = nx.Graph()
+    G_layout.add_nodes_from(all_nodes)
+    G_layout.add_edges_from(edges_g1.union(edges_g2))
+    pos = nx.spring_layout(G_layout, seed=42)
+
+    # --- Plotting Helper ---
+    def draw_subplot(ax, G, edges_to_draw, title, color_mode="common"):
+        """
+        Zeichnet einen einzelnen Subplot.
+        color_mode: 'common' (bunt nach Typ) oder 'unique' (eine Farbe, z.B. Rot)
+        """
+        ax.set_title(title)
+        
+        if not edges_to_draw:
+            ax.text(0.5, 0.5, "No edges", ha='center', va='center', transform=ax.transAxes)
+            ax.set_axis_off()
+            return
+
+        # Kanten zeichnen
+        if color_mode == "common":
+            # Bunt nach Edge-Type
+            for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in edges_to_draw}):
+                edges_of_type = [e for e in edges_to_draw if edge_kingdom_type(G, e[0], e[1]) == edge_type]
+                nx.draw_networkx_edges(
+                    G, pos, edgelist=edges_of_type,
+                    edge_color=_edge_color(edge_type),
+                    width=edge_width, alpha=0.8, ax=ax
+                )
+        else:
+            # Unique: Einheitliche Farbe (z.B. Rot oder Dunkelgrau)
+            nx.draw_networkx_edges(
+                G, pos, edgelist=list(edges_to_draw),
+                edge_color="#d62728", # Rot
+                width=edge_width * 1.5, alpha=0.8, ax=ax
+            )
+
+        # Knoten zeichnen (immer gleich)
+        # Wir zeichnen nur Knoten, die auch in diesem Graph G existieren
+        nx.draw_networkx_nodes(
+            G, pos, nodelist=list(G.nodes),
+            node_color=[_node_color(G, n) for n in G.nodes],
+            node_size=node_size, ax=ax
+        )
+        
+        ax.set_axis_off()
+
+    # --- Die 4 Plots füllen ---
+    
+    # Reihe 1: Field Soil (Graph 0)
+    # Links: Common
+    draw_subplot(axes[0, 0], graphs[0], common_edges, f"{labels[0]} - Common Edges", color_mode="common")
+    # Rechts: Unique
+    draw_subplot(axes[0, 1], graphs[0], unique_g1, f"{labels[0]} - Unique Edges", color_mode="unique")
+
+    # Reihe 2: Rhizosphere (Graph 1)
+    # Links: Common
+    draw_subplot(axes[1, 0], graphs[1], common_edges, f"{labels[1]} - Common Edges", color_mode="common")
+    # Rechts: Unique
+    draw_subplot(axes[1, 1], graphs[1], unique_g2, f"{labels[1]} - Unique Edges", color_mode="unique")
+
+    # --- Legende ---
     legend_handles = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
-        Line2D([0], [0], color="#1f77b4", linewidth=2, label="Fungi-Fungi edge"),
-        Line2D([0], [0], color="#ff7f0e", linewidth=2, label="Bacteria-Bacteria edge"),
-        Line2D([0], [0], color="#9467bd", linewidth=2, label="Fungi-Bacteria edge"),
+        Line2D([0], [0], color="#1f77b4", linewidth=2, label="Fungi-Fungi (Common)"),
+        Line2D([0], [0], color="#ff7f0e", linewidth=2, label="Bacteria-Bacteria (Common)"),
+        Line2D([0], [0], color="#9467bd", linewidth=2, label="Fungi-Bacteria (Common)"),
+        Line2D([0], [0], color="#d62728", linewidth=2, label="Unique Edge"),
     ]
     fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
 
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
+    
+    print(f"Diff-Grid saved to {path}")
+    return path
+
+def plot_common_only(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "graph_common_only.png",
+    figsize: tuple[float, float] = (10, 10),
+    node_size: int = 150, # Etwas größere Knoten, da weniger da ist
+    edge_width: float = 2.0, # Deutlich dickere Kanten
+):
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    from matplotlib.lines import Line2D
+
+    if len(graphs) != 2:
+        raise ValueError("Diese Funktion benötigt genau 2 Graphen.")
+
+    # 1. Common Kanten finden
+    edges_g1 = set(graphs[0].edges())
+    edges_g2 = set(graphs[1].edges())
+    common_edges = edges_g1.intersection(edges_g2)
+
+    if not common_edges:
+        print("Keine gemeinsamen Kanten gefunden.")
+        return
+
+    # 2. Subgraphen erstellen
+    # Wir nehmen einen der Graphen (z.B. graphs[0]) als Basis und schneiden ihn zu.
+    # nx.edge_subgraph erstellt einen neuen Graphen, der nur diese Kanten (und die dazugehörigen Knoten) enthält.
+    G_common = nx.edge_subgraph(graphs[0], common_edges).copy()
+    
+    # Optional: Falls du willst, dass die Knotenbeschriftungen (Labels) angezeigt werden, 
+    # da es jetzt übersichtlich ist, könntest du das hier einkommentieren:
+    # node_labels = {n: n.split(":")[-1] for n in G_common.nodes()} # Nur den Taxon-Namen ohne Kingdom
+
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+
+    # Layout berechnen (nur für den Common-Graphen)
+    pos = nx.spring_layout(G_common, seed=42, k=0.5) # k=0.5 zieht die Knoten etwas auseinander
+
+    # Kanten zeichnen (Bunt nach Typ)
+    for edge_type in sorted({edge_kingdom_type(G_common, u, v) for u, v in G_common.edges()}):
+        edges_of_type = [e for e in G_common.edges() if edge_kingdom_type(G_common, e[0], e[1]) == edge_type]
+        nx.draw_networkx_edges(
+            G_common,
+            pos,
+            edgelist=edges_of_type,
+            edge_color=_edge_color(edge_type),
+            width=edge_width,
+            alpha=0.9,
+            ax=ax,
+        )
+
+    # Knoten zeichnen
+    nx.draw_networkx_nodes(
+        G_common,
+        pos,
+        nodelist=list(G_common.nodes),
+        node_color=[_node_color(G_common, n) for n in G_common.nodes],
+        node_size=node_size,
+        ax=ax,
+    )
+    
+    # Optional: Labels zeichnen (Vorsicht: Bei langen Namen wird es unübersichtlich)
+    # nx.draw_networkx_labels(G_common, pos, labels=node_labels, font_size=8, ax=ax)
+
+    ax.set_title(f"Common Edges Network ({G_common.number_of_nodes()} Nodes, {G_common.number_of_edges()} Edges)\nIntersection of {labels[0]} & {labels[1]}")
+    ax.set_axis_off()
+
+    # Legende
+    legend_handles = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
+        Line2D([0], [0], color="#1f77b4", linewidth=2, label="Fungi-Fungi"),
+        Line2D([0], [0], color="#ff7f0e", linewidth=2, label="Bacteria-Bacteria"),
+        Line2D([0], [0], color="#9467bd", linewidth=2, label="Fungi-Bacteria"),
+    ]
+    ax.legend(handles=legend_handles, loc="upper right", frameon=False)
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Common-Only Plot saved to {path}")
     return path
 
 

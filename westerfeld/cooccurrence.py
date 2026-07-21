@@ -20,6 +20,8 @@ from graph.comparison import (
     graph_node_type_summary,
     plot_graphs_side_by_side,
     is_subgraph,
+    plot_diff_grid,
+    plot_common_only,
 )
 from graph.creation import CorrelationGraph, GlassoGraph
 
@@ -481,21 +483,26 @@ def main():
     print("\nPairwise nodes_iou for Bacteria nodes")
     print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Bacteria"))
 
-    # 1. Der normale Plot
+
     plot_graphs_side_by_side(
         graphs,
         labels,
-        path="graph_side_by_side_normal.png",
+        path="graph_side_by_side.png",
     )
 
-    # 2. Der neue Diff-Plot
-    plot_graphs_side_by_side(
+    # Der neue 2x2 Diff Grid Plot
+    plot_diff_grid(
         graphs,
         labels,
-        path="graph_side_by_side_diff.png",
-        diff_mode=True,  # Hier der Schalter!
+        path="graph_side_by_side_diff_grid.png",
     )
 
+    plot_common_only(
+        graphs,
+        labels,
+        path="graph_common_only.png",
+    )
+    
     plot_graphs_by_edge_type(
         graphs,
         labels,
