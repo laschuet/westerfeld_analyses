@@ -13,7 +13,6 @@ from sklearn.preprocessing import StandardScaler
 
 from graph.niche import identify_generalists_or_specialists
 
-
 class GraphCreationMethod(ABC):
     @abstractmethod
     def create_network(
@@ -23,7 +22,6 @@ class GraphCreationMethod(ABC):
         df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
         pass
-
 
 def _annotate_niche(G, df_lookup, df_relative):
     """Attach the lookup attributes plus a niche classification to each node."""
@@ -53,7 +51,6 @@ def _parse_kingdom_from_node(node):
         return node.split(":", 1)[0]
     return None
 
-
 def _edge_kingdom_type(node_a, node_b):
     kingdom_a = _parse_kingdom_from_node(node_a)
     kingdom_b = _parse_kingdom_from_node(node_b)
@@ -62,7 +59,6 @@ def _edge_kingdom_type(node_a, node_b):
     if kingdom_a == kingdom_b:
         return f"{kingdom_a}-{kingdom_a}"
     return "Fungi-Bacteria" if {kingdom_a, kingdom_b} == {"Fungi", "Bacteria"} else f"{kingdom_a}-{kingdom_b}"
-
 
 def _annotate_kingdoms(G):
     nx.set_node_attributes(
@@ -78,7 +74,6 @@ def _annotate_kingdoms(G):
         },
         "kingdom_edge",
     )
-
 
 def plot_niche_breadth_boxplot(
     graphs: list[nx.Graph],
@@ -146,7 +141,6 @@ def plot_niche_breadth_boxplot(
     
     print(f"Boxplot saved to {path}")
     return path
-
 
 def plot_niche_breadth_vs_abundance_grid(
     graphs: list[nx.Graph],
@@ -256,8 +250,6 @@ def plot_niche_breadth_vs_abundance_grid(
     print(f"Grid Plot saved to {path}")
     return path
 
-
-
 class CorrelationGraph(GraphCreationMethod):
     # Pairwise correlations are well-defined for any number of taxa, so no
     # prevalence filtering is required.
@@ -316,7 +308,6 @@ class CorrelationGraph(GraphCreationMethod):
         if df_lookup is not None and df_relative is not None:
             _annotate_niche(G, df_lookup, df_relative)
         return G
-
 
 class GlassoGraph(GraphCreationMethod):
     # Graphical Lasso inverts the taxa covariance, which is singular when there

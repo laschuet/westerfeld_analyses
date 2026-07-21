@@ -23,7 +23,12 @@ from graph.comparison import (
     plot_diff_grid,
     plot_common_only,
 )
-from graph.creation import CorrelationGraph, GlassoGraph, plot_niche_breadth_boxplot, plot_niche_breadth_vs_abundance_grid
+from graph.creation import (
+    CorrelationGraph, 
+    GlassoGraph, 
+    plot_niche_breadth_boxplot, 
+    plot_niche_breadth_vs_abundance_grid,
+)
 
 
 def _scale_block(df, mode):
@@ -48,12 +53,10 @@ def _scale_block(df, mode):
         return df / scale
     raise ValueError(f"Unknown mode value: {mode}")
 
-
 def _sanitize_sheet_name(name):
     invalid = '[]:*?/\\'
     sanitized = ''.join('_' if ch in invalid else ch for ch in str(name))
     return sanitized[:31]
-
 
 def _build_taxon_lookup(df_long, taxonomy, kingdom, habitat):
     taxon_names = (
@@ -357,7 +360,6 @@ def export_cooccurrence_results(path, graphs, labels):
         )
         common_df.to_excel(writer, sheet_name=_sanitize_sheet_name("Common Subgraph"), index=False)
 
-
 def cooccurrence(
     kingdoms,
     graph_creator,
@@ -417,7 +419,6 @@ def cooccurrence(
         df_lookup=df_lookup,
         df_relative=df_relative,
     )
-
 
 def main():
     print("-----------------")
@@ -557,7 +558,6 @@ def main():
     #     f"\nFind_similar_subgraphs: {len(similar)} sign-matching substructures, "
     #     f"largest = {largest} edges"
     # )
-
 
 if __name__ == "__main__":
     main()

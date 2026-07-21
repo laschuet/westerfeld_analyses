@@ -10,7 +10,6 @@ from grakel.utils import graph_from_networkx
 
 from _utils import calc_iou
 
-
 def graph_metrics(G: nx.Graph) -> dict:
     """
     Summary statistics for a single graph.
@@ -53,14 +52,12 @@ def graph_metrics(G: nx.Graph) -> dict:
         ),
     }
 
-
 def _parse_node_kingdom(G: nx.Graph, node):
     if "kingdom" in G.nodes[node]:
         return G.nodes[node]["kingdom"]
     if isinstance(node, str) and ":" in node:
         return node.split(":", 1)[0]
     return None
-
 
 def _canonical_edge_kingdom_type(kingdom_a, kingdom_b):
     if kingdom_a is None or kingdom_b is None:
@@ -71,10 +68,8 @@ def _canonical_edge_kingdom_type(kingdom_a, kingdom_b):
         return "Fungi-Bacteria"
     return "-".join(sorted([kingdom_a, kingdom_b]))
 
-
 def node_kingdom(G: nx.Graph, node):
     return _parse_node_kingdom(G, node)
-
 
 def edge_kingdom_type(G: nx.Graph, u, v):
     attr = G.edges[u, v].get("kingdom_edge")
@@ -82,11 +77,9 @@ def edge_kingdom_type(G: nx.Graph, u, v):
         return attr
     return _canonical_edge_kingdom_type(_parse_node_kingdom(G, u), _parse_node_kingdom(G, v))
 
-
 def graph_subgraph_by_node_kingdom(G: nx.Graph, kingdom: str) -> nx.Graph:
     nodes = [n for n in G.nodes if _parse_node_kingdom(G, n) == kingdom]
     return G.subgraph(nodes).copy()
-
 
 def graph_subgraph_by_edge_kingdom(G: nx.Graph, edge_type: str) -> nx.Graph:
     H = nx.Graph()
@@ -96,14 +89,11 @@ def graph_subgraph_by_edge_kingdom(G: nx.Graph, edge_type: str) -> nx.Graph:
     nx.set_node_attributes(H, {n: G.nodes[n] for n in H.nodes})
     return H
 
-
 def graph_metrics_by_kingdom(G: nx.Graph, kingdom: str) -> dict:
     return graph_metrics(graph_subgraph_by_node_kingdom(G, kingdom))
 
-
 def graph_metrics_by_edge_type(G: nx.Graph, edge_type: str) -> dict:
     return graph_metrics(graph_subgraph_by_edge_kingdom(G, edge_type))
-
 
 def graph_node_type_summary(G: nx.Graph) -> pd.DataFrame:
     """Summarize each kingdom's induced subgraph by node type."""
@@ -128,7 +118,6 @@ def graph_node_type_summary(G: nx.Graph) -> pd.DataFrame:
         )
     return pd.DataFrame(summary).set_index("kingdom")
 
-
 def _edge_type_edges(G: nx.Graph, edge_type: str | None) -> set[tuple]:
     return {
         tuple(sorted((u, v)))
@@ -136,10 +125,8 @@ def _edge_type_edges(G: nx.Graph, edge_type: str | None) -> set[tuple]:
         if edge_kingdom_type(G, u, v) == edge_type
     }
 
-
 def shared_edges_by_type(G1: nx.Graph, G2: nx.Graph, edge_type: str) -> list:
     return sorted(_edge_type_edges(G1, edge_type) & _edge_type_edges(G2, edge_type))
-
 
 def compare_graphs_pairwise_edge_type_iou(
     graphs: list[nx.Graph], labels: list[str], edge_type: str
@@ -148,7 +135,6 @@ def compare_graphs_pairwise_edge_type_iou(
         graphs, labels, "edges_iou", pair_type=edge_type
     )
 
-
 def compare_graphs_pairwise_node_type_iou(
     graphs: list[nx.Graph], labels: list[str], kingdom: str
 ) -> pd.DataFrame:
@@ -156,14 +142,12 @@ def compare_graphs_pairwise_node_type_iou(
         graphs, labels, "nodes_iou", pair_type=kingdom
     )
 
-
 def _node_color(G: nx.Graph, node):
     kind = _parse_node_kingdom(G, node)
     return {
         "Fungi": "#1f77b4",
         "Bacteria": "#2ca02c",
     }.get(kind, "#7f7f7f")
-
 
 def _edge_color(edge_type: str):
     return {
@@ -518,7 +502,6 @@ def plot_common_only(
     print(f"Common-Only Plot saved to {path}")
     return path
 
-
 def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.DataFrame:
     """Summarize edge-type-specific subgraphs.
 
@@ -565,31 +548,25 @@ def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.Data
         ),
     }
 
-
 def compare_graph_metrics(graphs: list[nx.Graph], labels: list[str]) -> pd.DataFrame:
     """One row per graph with `graph_metrics` columns."""
     return pd.DataFrame([graph_metrics(g) for g in graphs], index=labels)
-
 
 def _canonical_edges(G: nx.Graph) -> set:
     """Return edges as a set of sorted tuples (so (a,b) == (b,a))."""
     return {tuple(sorted(e)) for e in G.edges}
 
-
 def shared_nodes(G1: nx.Graph, G2: nx.Graph) -> list:
     return sorted(set(G1.nodes) & set(G2.nodes))
 
-
 def shared_edges(G1: nx.Graph, G2: nx.Graph) -> list:
     return sorted(_canonical_edges(G1) & _canonical_edges(G2))
-
 
 def is_subgraph(G_sub: nx.Graph, G: nx.Graph) -> bool:
     """True iff every node and every edge of G_sub is also in G."""
     if not set(G_sub.nodes) <= set(G.nodes):
         return False
     return _canonical_edges(G_sub) <= _canonical_edges(G)
-
 
 def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
     """Graph on the nodes both graphs share, keeping only edges they both have."""
@@ -600,13 +577,11 @@ def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
     G.add_edges_from(edges)
     return G
 
-
 def _graph_equal(g1: nx.Graph, g2: nx.Graph) -> bool:
     """Equal iff the node sets and (unordered) edge sets match."""
     return set(g1.nodes) == set(g2.nodes) and _canonical_edges(g1) == _canonical_edges(
         g2
     )
-
 
 def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.Graph]:
     """
@@ -659,7 +634,6 @@ def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.G
         return structures[-n:]
     return structures
 
-
 def _grakel_graph(G: nx.Graph, attribute=None):
     if attribute is None:
         # Inject node names as dummy labels so grakel has something to work with
@@ -668,17 +642,14 @@ def _grakel_graph(G: nx.Graph, attribute=None):
         attribute = "label"
     return next(graph_from_networkx([G], node_labels_tag=attribute))
 
-
 def graph_kernel(graphs: list[nx.Graph], kernel: Kernel, label=None):
     grakel_graphs = [_grakel_graph(g, attribute=label) for g in graphs]
     return kernel.fit_transform(grakel_graphs)
-
 
 def _filter_graph_by_node_kingdom(G: nx.Graph, kingdom: str | None) -> nx.Graph:
     if kingdom is None:
         return G
     return graph_subgraph_by_node_kingdom(G, kingdom)
-
 
 def _iou_nodes(g1, g2, pair_type: str | None = None):
     if pair_type is None:
@@ -687,12 +658,10 @@ def _iou_nodes(g1, g2, pair_type: str | None = None):
     g2 = _filter_graph_by_node_kingdom(g2, pair_type)
     return calc_iou(list(g1.nodes), list(g2.nodes))
 
-
 def _filter_graph_by_edge_type(G: nx.Graph, edge_type: str | None) -> nx.Graph:
     if edge_type is None:
         return G
     return graph_subgraph_by_edge_kingdom(G, edge_type)
-
 
 def _iou_edges(g1, g2, pair_type: str | None = None):
     g1 = _filter_graph_by_edge_type(g1, pair_type)
@@ -701,14 +670,11 @@ def _iou_edges(g1, g2, pair_type: str | None = None):
     e2 = ["|".join(sorted(e)) for e in g2.edges]
     return calc_iou(e1, e2)
 
-
 def _kernel_shortest_path(g1, g2, normalize=True):
     return graph_kernel([g1, g2], ShortestPath(normalize=normalize))[1, 0]
 
-
 def _kernel_weisfeiler_lehman(g1, g2, normalize=True):
     return graph_kernel([g1, g2], WeisfeilerLehman(normalize=normalize))[1, 0]
-
 
 _METRICS = {
     "nodes_iou": _iou_nodes,
@@ -716,7 +682,6 @@ _METRICS = {
     "kernel_shortest_path": _kernel_shortest_path,
     "kernel_weisfeiler_lehman": _kernel_weisfeiler_lehman,
 }
-
 
 def compare_graphs_pairwise(
     graphs: list[nx.Graph],
