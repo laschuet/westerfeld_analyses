@@ -23,7 +23,7 @@ from graph.comparison import (
     plot_diff_grid,
     plot_common_only,
 )
-from graph.creation import CorrelationGraph, GlassoGraph
+from graph.creation import CorrelationGraph, GlassoGraph, plot_niche_breadth_boxplot
 
 
 def _scale_block(df, mode):
@@ -55,7 +55,7 @@ def _sanitize_sheet_name(name):
     return sanitized[:31]
 
 
-def _build_taxon_lookup(df_long, taxonomy, kingdom):
+def _build_taxon_lookup(df_long, taxonomy, kingdom, habitat):
     taxon_names = (
         df_long[[taxonomy]]
         .drop_duplicates()
@@ -68,6 +68,7 @@ def _build_taxon_lookup(df_long, taxonomy, kingdom):
         {
             "kingdom": kingdom,
             "taxon": taxon_names.values,
+            "habitat": habitat,
         },
         index=lookup_index,
     )
@@ -272,7 +273,6 @@ def plot_graphs_side_by_side_by_niche(
     plt.close(fig)
     return path
 
-
 def export_cooccurrence_results(path, graphs, labels):
     graph_metrics_df = pd.DataFrame([graph_metrics(graph) for graph in graphs], index=labels)
 
@@ -406,7 +406,7 @@ def cooccurrence(
         kingdom_frames.append(df_rel)
         kingdom_relative_frames.append(df_rel_raw)
         if annotate_niche:
-            lookup_frames.append(_build_taxon_lookup(df_long, taxonomy, kingdom))
+            lookup_frames.append(_build_taxon_lookup(df_long, taxonomy, kingdom, habitats))
 
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
     df_relative = pd.concat(kingdom_relative_frames, axis=1, join="inner") if annotate_niche else None
@@ -518,6 +518,14 @@ def main():
         figsize=(14, 7),
         node_size=80,
         edge_width=1.0,
+    )
+
+
+    # Boxplot erstellen
+    plot_niche_breadth_boxplot(
+        graphs,
+        labels,
+        path="FigS2_niche_breadth_boxplot.png"
     )
 
     cs = common_subgraph(graph_1, graph_2)

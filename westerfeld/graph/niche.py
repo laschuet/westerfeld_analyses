@@ -10,7 +10,7 @@ HABITAT_THRESHOLDS = {
     "Field_Soil": {
         "mean_rel_abundance": 2e-5,
         "specialist": 1.5,
-        "generalist": 27.0,  
+        "generalist": 28.0,  
     },
     "Rhizosphere": {
         "mean_rel_abundance": 2e-5,

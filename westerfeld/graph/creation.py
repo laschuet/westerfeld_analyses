@@ -28,20 +28,24 @@ class GraphCreationMethod(ABC):
 def _annotate_niche(G, df_lookup, df_relative):
     """Attach the lookup attributes plus a niche classification to each node."""
     nodes_attr = dict(G.nodes)
+    
     for node in G.nodes:
         attributes = df_lookup.loc[node]
-        habitat_type = attributes.get("habitat", "Field_Soil") 
-        
-        spec_or_gen, _, _ = identify_generalists_or_specialists(
+        habitat_type = attributes["habitat"]
+
+        spec_or_gen, _, Bj = identify_generalists_or_specialists(
             df_relative[node].to_numpy(),
-            habitat_type=habitat_type 
+            habitat_type=habitat_type
         )
+        
         attributes.loc["generalist_or_specialists"] = (
             spec_or_gen if spec_or_gen is not None else "None"
         )
+        
+        attributes.loc["niche_breadth"] = Bj if Bj > 0 else np.nan
         nodes_attr[node] = attributes
+        
     nx.set_node_attributes(G, nodes_attr)
-
 
 def _parse_kingdom_from_node(node):
     if isinstance(node, str) and ":" in node:
@@ -73,6 +77,74 @@ def _annotate_kingdoms(G):
         },
         "kingdom_edge",
     )
+
+
+def plot_niche_breadth_boxplot(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "FigS2_niche_breadth_boxplot.png",
+    figsize: tuple[float, float] = (8, 6),
+):
+    """
+    Erstellt einen Boxplot der Niche Breadth (Bj) Werte pro Habitat.
+    Liest die Werte direkt aus den Node-Attributen der Graphen.
+    """
+    data_to_plot = []
+    plot_labels = []
+
+    for G, label in zip(graphs, labels):
+        bj_values = []
+        
+        for node, attrs in G.nodes(data=True):
+            bj = attrs.get("niche_breadth", np.nan)
+            
+            if not np.isnan(bj):
+                bj_values.append(bj)
+        
+        if bj_values:
+            data_to_plot.append(bj_values)
+            plot_labels.append(label)
+
+    if not data_to_plot:
+        print("Keine Niche Breadth Daten in den Graphen gefunden.")
+        return
+
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    bp = ax.boxplot(data_to_plot, label=plot_labels, patch_artist=True, showmeans=True)
+    
+    colors = ['#1f77b4', '#ff7f0e'] 
+    for patch, color in zip(bp['boxes'], colors):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.6)
+
+    ax.set_ylabel("Niche Breadth ($B_j$)", fontsize=12)
+    ax.set_title("Niche Breadth Distribution per Habitat", fontsize=14)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+
+    # Threshold-Linien (visuelle Hilfe)
+    # Da wir hier nicht wissen, welcher Graph welches Habitat ist (außer über den Label-String),
+    # zeichnen wir einfach beide Linien ein oder lassen es weg.
+    # Wenn "Field" im Label ist, nehmen wir 28, sonst 25.
+    for label in plot_labels:
+        if "Field" in label:
+            ax.axhline(y=28, color='blue', linestyle=':', alpha=0.5, label='FS Threshold Generalist (28)')
+            ax.axhline(y=1.5, color='blue', linestyle='-', alpha=0.5, label='FS Threshold Specialist (1.5)')
+
+        elif "Rhizo" in label:
+            ax.axhline(y=25, color='orange', linestyle=':', alpha=0.5, label='RH Threshold Generalist (25)')
+            ax.axhline(y=1.5, color='orange', linestyle='-', alpha=0.5, label='RH Threshold Specialist (1.5)')
+    
+    handles, labels_legend = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels_legend, handles))
+    ax.legend(by_label.values(), by_label.keys(), loc='upper right')
+
+    plt.tight_layout()
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Boxplot saved to {path}")
+    return path
 
 
 class CorrelationGraph(GraphCreationMethod):
