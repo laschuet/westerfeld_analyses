@@ -23,7 +23,7 @@ from graph.comparison import (
     plot_diff_grid,
     plot_common_only,
 )
-from graph.creation import CorrelationGraph, GlassoGraph, plot_niche_breadth_boxplot
+from graph.creation import CorrelationGraph, GlassoGraph, plot_niche_breadth_boxplot, plot_niche_breadth_vs_abundance_grid
 
 
 def _scale_block(df, mode):
@@ -528,6 +528,12 @@ def main():
         path="FigS2_niche_breadth_boxplot.png"
     )
 
+
+    plot_niche_breadth_vs_abundance_grid(
+        graphs,
+        labels,
+        path="niche_breadth_vs_mean_relative_abundance_grid.png"
+    )
     cs = common_subgraph(graph_1, graph_2)
     print(
         f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"

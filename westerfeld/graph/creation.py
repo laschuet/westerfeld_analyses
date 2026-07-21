@@ -43,6 +43,7 @@ def _annotate_niche(G, df_lookup, df_relative):
         )
         
         attributes.loc["niche_breadth"] = Bj if Bj > 0 else np.nan
+        attributes.loc["mean_relative_abundance"] = df_relative[node].mean()
         nodes_attr[node] = attributes
         
     nx.set_node_attributes(G, nodes_attr)
@@ -145,6 +146,116 @@ def plot_niche_breadth_boxplot(
     
     print(f"Boxplot saved to {path}")
     return path
+
+
+def plot_niche_breadth_vs_abundance_grid(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "niche_breadth_vs_abundance_grid.png",
+    figsize: tuple[float, float] = (14, 7),
+):
+    """
+    Erstellt ein Grid-Plot (pro Habitat einen Subplot).
+    X-Achse: Log(Mean Relative Abundance)
+    Y-Achse: Niche Breadth (Bj)
+    Farben: Generalist (Grün), Specialist (Rot), Unclassified (Grau)
+    Marker: Fungi (Kreis), Bacteria (Dreieck)
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib.lines import Line2D
+
+    fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
+    if len(graphs) == 1:
+        axes = [axes]
+
+    # Farben und Marker definieren
+    color_map = {
+        "Generalist": "#2ca02c",  # Grün
+        "Specialist": "#d62728",  # Rot
+        "None": "#7f7f7f",        # Grau
+    }
+    
+    marker_map = {
+        "Fungi": "o",   # Kreis
+        "Bacteria": "^" # Dreieck
+    }
+
+    for ax, G, label in zip(axes, graphs, labels):
+        x_vals = []
+        y_vals = []
+        colors = []
+        markers = []
+
+        # Daten aus den Graph-Attributen sammeln
+        for node, attrs in G.nodes(data=True):
+            # Werte holen
+            bj = attrs.get("niche_breadth", np.nan)
+            mean_ab = attrs.get("mean_relative_abundance", np.nan)
+            niche_class = attrs.get("generalist_or_specialists", "None")
+            kingdom = attrs.get("kingdom", "Unknown")
+
+            # Filter: Nur plotten, wenn wir gültige Werte haben
+            if not np.isnan(bj) and not np.isnan(mean_ab) and mean_ab > 0:
+                x_vals.append(np.log10(mean_ab)) # Log-Transformation
+                y_vals.append(bj)
+                colors.append(color_map.get(niche_class, "#7f7f7f"))
+                markers.append(marker_map.get(kingdom, "o"))
+
+        # Plotten
+        # Wir müssen pro Marker-Typ getrennt plotten, damit die Legende stimmt
+        for kingdom in ["Fungi", "Bacteria"]:
+            for niche_class in ["Generalist", "Specialist", "None"]:
+                # Indizes finden, die zu dieser Kombination passen
+                idx = [i for i, (c, m) in enumerate(zip(colors, markers)) 
+                       if c == color_map[niche_class] and m == marker_map[kingdom]]
+                
+                if idx:
+                    ax.scatter(
+                        np.array(x_vals)[idx],
+                        np.array(y_vals)[idx],
+                        c=color_map[niche_class],
+                        marker=marker_map[kingdom],
+                        label=f"{kingdom} {niche_class}" if ax == axes[0] else "", # Label nur im ersten Plot
+                        alpha=0.7,
+                        edgecolors='black',
+                        linewidth=0.5,
+                        s=50
+                    )
+
+        # Achsenbeschriftung und Titel
+        ax.set_xlabel("Log10(Mean Relative Abundance)")
+        ax.set_ylabel("Niche Breadth ($B_j$)")
+        ax.set_title(label)
+        ax.grid(True, linestyle='--', alpha=0.5)
+
+    # --- Gemeinsame Legende ---
+    # Wir sammeln alle Handles, die wir oben erzeugt haben (aus axes[0])
+    handles, labels_legend = axes[0].get_legend_handles_labels()
+    
+    # Zusätzliche Legende für Kingdom (Marker) und Niche (Farbe) zur besseren Übersicht
+    legend_marker = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label="Fungi", markeredgecolor='black'),
+        Line2D([0], [0], marker="^", color="w", markerfacecolor="gray", markersize=10, label="Bacteria", markeredgecolor='black'),
+    ]
+    
+    legend_color = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Generalist"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#d62728", markersize=10, label="Specialist"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#7f7f7f", markersize=10, label="Unclassified"),
+    ]
+
+    # Legenden platzieren
+    fig.legend(handles=legend_marker, loc="upper center", bbox_to_anchor=(0.5, 1.05), ncol=2, frameon=False, title="Kingdom")
+    fig.legend(handles=legend_color, loc="upper center", bbox_to_anchor=(0.5, 1.12), ncol=3, frameon=False, title="Classification")
+
+    fig.tight_layout(rect=[0, 0, 1, 0.95]) # Platz für die oberen Legenden
+    fig.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    
+    print(f"Grid Plot saved to {path}")
+    return path
+
 
 
 class CorrelationGraph(GraphCreationMethod):
