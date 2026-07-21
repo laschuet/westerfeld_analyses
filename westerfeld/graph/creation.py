@@ -30,8 +30,11 @@ def _annotate_niche(G, df_lookup, df_relative):
     nodes_attr = dict(G.nodes)
     for node in G.nodes:
         attributes = df_lookup.loc[node]
+        habitat_type = attributes.get("habitat", "Field_Soil") 
+        
         spec_or_gen, _, _ = identify_generalists_or_specialists(
-            df_relative[node].to_numpy()
+            df_relative[node].to_numpy(),
+            habitat_type=habitat_type 
         )
         attributes.loc["generalist_or_specialists"] = (
             spec_or_gen if spec_or_gen is not None else "None"
