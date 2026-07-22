@@ -28,7 +28,6 @@ from graph.comparison import (
 )
 from graph.creation import (
     CorrelationGraph, 
-    GlassoGraph, 
 )
 
 from graph.niche import (
@@ -362,7 +361,6 @@ def main():
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
     graph_creator = CorrelationGraph()
-    # graph_creator = GlassoGraph()
 
     graph_1 = cooccurrence(
         kingdoms,
