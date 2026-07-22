@@ -12,6 +12,7 @@ from sklearn.covariance import GraphicalLassoCV
 from sklearn.preprocessing import StandardScaler
 
 from graph.niche import _annotate_niche
+from _utils import _annotate_kingdoms
 
 class GraphCreationMethod(ABC):
     @abstractmethod
@@ -22,35 +23,6 @@ class GraphCreationMethod(ABC):
         df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
         pass
-
-def _parse_kingdom_from_node(node):
-    if isinstance(node, str) and ":" in node:
-        return node.split(":", 1)[0]
-    return None
-
-def _edge_kingdom_type(node_a, node_b):
-    kingdom_a = _parse_kingdom_from_node(node_a)
-    kingdom_b = _parse_kingdom_from_node(node_b)
-    if kingdom_a is None or kingdom_b is None:
-        return None
-    if kingdom_a == kingdom_b:
-        return f"{kingdom_a}-{kingdom_a}"
-    return "Fungi-Bacteria" if {kingdom_a, kingdom_b} == {"Fungi", "Bacteria"} else f"{kingdom_a}-{kingdom_b}"
-
-def _annotate_kingdoms(G):
-    nx.set_node_attributes(
-        G,
-        {node: _parse_kingdom_from_node(node) for node in G.nodes},
-        "kingdom",
-    )
-    nx.set_edge_attributes(
-        G,
-        {
-            (u, v): _edge_kingdom_type(u, v)
-            for u, v in G.edges
-        },
-        "kingdom_edge",
-    )
 
 class CorrelationGraph(GraphCreationMethod):
     # Pairwise correlations are well-defined for any number of taxa, so no
