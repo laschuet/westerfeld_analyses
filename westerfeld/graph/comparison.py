@@ -423,28 +423,21 @@ def plot_common_only(
     labels: list[str],
     path: str = "graph_common_only.png",
     figsize: tuple[float, float] = (10, 10),
-    node_size: int = 150, # Etwas größere Knoten, da weniger da ist
-    edge_width: float = 2.0, # Deutlich dickere Kanten
+    node_size: int = 150,
+    edge_width: float = 2.0, 
 ):
-    import matplotlib.pyplot as plt
-    import networkx as nx
-    from matplotlib.lines import Line2D
-
     if len(graphs) != 2:
-        raise ValueError("Diese Funktion benötigt genau 2 Graphen.")
+        raise ValueError("Exactly 2 graphs a required.")
 
-    # 1. Common Kanten finden
+    # 1. Find common edges 
     edges_g1 = set(graphs[0].edges())
     edges_g2 = set(graphs[1].edges())
     common_edges = edges_g1.intersection(edges_g2)
 
     if not common_edges:
-        print("Keine gemeinsamen Kanten gefunden.")
+        print("No common edges found.")
         return
 
-    # 2. Subgraphen erstellen
-    # Wir nehmen einen der Graphen (z.B. graphs[0]) als Basis und schneiden ihn zu.
-    # nx.edge_subgraph erstellt einen neuen Graphen, der nur diese Kanten (und die dazugehörigen Knoten) enthält.
     G_common = nx.edge_subgraph(graphs[0], common_edges).copy()
     
     # Optional: Falls du willst, dass die Knotenbeschriftungen (Labels) angezeigt werden, 
@@ -500,6 +493,143 @@ def plot_common_only(
     plt.close(fig)
     
     print(f"Common-Only Plot saved to {path}")
+    return path
+
+def export_common_edges_to_excel(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "common_edges.xlsx",
+):
+    import pandas as pd
+
+    if len(graphs) != 2:
+        raise ValueError("Exactly 2 graphs required.")
+
+    edges_g1 = set(graphs[0].edges())
+    edges_g2 = set(graphs[1].edges())
+    common_edges = edges_g1.intersection(edges_g2)
+
+    if not common_edges:
+        print("No common edges found to export.")
+        return
+
+    data = []
+    # Wir nutzen graphs[0] als Referenz für die Gewichte (da die Kanten ja identisch sind)
+    G_ref = graphs[0]
+
+    for u, v in common_edges:
+        # Edge-Typ bestimmen
+        e_type = edge_kingdom_type(G_ref, u, v)
+        
+        # Gewicht (Korrelation) holen
+        weight = G_ref[u][v].get('weight', 0)
+        
+        # Taxon-Namen säubern (nur den Teil nach dem Doppelpunkt für bessere Lesbarkeit)
+        name_u = u.split(":")[-1]
+        name_v = v.split(":")[-1]
+
+        data.append({
+            "Edge_Type": e_type,
+            "Taxon_1": name_u,
+            "Taxon_2": name_v,
+            "Correlation": weight,
+            "Node_ID_1": u, # Vollständige ID falls benötigt
+            "Node_ID_2": v,
+        })
+
+    df = pd.DataFrame(data)
+    
+    # Sortieren: Erst nach Typ, dann nach Korrelation (stärkste zuerst)
+    df = df.sort_values(by=["Edge_Type", "Correlation"], ascending=[True, False])
+
+    # Speichern
+    df.to_excel(path, index=False)
+    print(f"Common edges exported to {path} ({len(df)} edges).")
+    return path
+
+def plot_common_only_detailed(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "graph_common_only_detailed.png",
+    figsize: tuple[float, float] = (18, 6), # Breit für 3 Spalten
+    node_size: int = 300, # Größer, da wir weniger pro Plot haben
+    edge_width: float = 2.0,
+):
+    import matplotlib.pyplot as plt
+    import networkx as nx
+
+    if len(graphs) != 2:
+        raise ValueError("Exactly 2 graphs required.")
+
+    edges_g1 = set(graphs[0].edges())
+    edges_g2 = set(graphs[1].edges())
+    common_edges = edges_g1.intersection(edges_g2)
+
+    if not common_edges:
+        print("No common edges found.")
+        return
+
+    # Wir erstellen einen temporären Graphen nur für die Common Edges
+    G_common = nx.edge_subgraph(graphs[0], common_edges).copy()
+
+    # Definiere die 3 Subplots
+    edge_types = ["Fungi-Fungi", "Bacteria-Bacteria", "Fungi-Bacteria"]
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+    for ax, e_type in zip(axes, edge_types):
+        # 1. Filtere Kanten und Knoten für diesen Typ
+        edges = [e for e in G_common.edges() if edge_kingdom_type(G_common, e[0], e[1]) == e_type]
+        
+        if not edges:
+            ax.text(0.5, 0.5, "No edges", ha='center', va='center')
+            ax.set_title(f"{e_type}\n(0 edges)")
+            ax.set_axis_off()
+            continue
+
+        # Subgraphen erstellen für sauberes Layout
+        G_sub = G_common.edge_subgraph(edges).copy()
+        
+        # Layout berechnen
+        pos = nx.spring_layout(G_sub, seed=42, k=0.8) # k=0.8 sorgt für mehr Abstand
+
+        # Kanten zeichnen
+        nx.draw_networkx_edges(
+            G_sub, pos,
+            edge_color=_edge_color(e_type),
+            width=edge_width,
+            alpha=0.8,
+            ax=ax
+        )
+
+        # Knoten zeichnen
+        nx.draw_networkx_nodes(
+            G_sub, pos,
+            node_color=[_node_color(G_sub, n) for n in G_sub.nodes],
+            node_size=node_size,
+            ax=ax
+        )
+
+        # LABELS ZEICHNEN
+        # Wir nehmen nur den Genus-Namen (alles nach dem Doppelpunkt)
+        labels_dict = {n: n.split(":")[-1] for n in G_sub.nodes()}
+        nx.draw_networkx_labels(
+            G_sub, pos, 
+            labels=labels_dict, 
+            font_size=9, 
+            ax=ax
+        )
+
+        ax.set_title(f"{e_type}\n({G_sub.number_of_nodes()} Nodes, {G_sub.number_of_edges()} Edges)")
+        ax.set_axis_off()
+
+    # Haupttitel
+    fig.suptitle(f"Common Edges: {labels[0]} & {labels[1]}", fontsize=16)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Detailed Common-Only Plot saved to {path}")
     return path
 
 def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False) -> pd.DataFrame:
@@ -562,11 +692,11 @@ def shared_nodes(G1: nx.Graph, G2: nx.Graph) -> list:
 def shared_edges(G1: nx.Graph, G2: nx.Graph) -> list:
     return sorted(_canonical_edges(G1) & _canonical_edges(G2))
 
-def is_subgraph(G_sub: nx.Graph, G: nx.Graph) -> bool:
-    """True iff every node and every edge of G_sub is also in G."""
-    if not set(G_sub.nodes) <= set(G.nodes):
-        return False
-    return _canonical_edges(G_sub) <= _canonical_edges(G)
+#def is_subgraph(G_sub: nx.Graph, G: nx.Graph) -> bool:
+#    """True iff every node and every edge of G_sub is also in G."""
+#    if not set(G_sub.nodes) <= set(G.nodes):
+#        return False
+#    return _canonical_edges(G_sub) <= _canonical_edges(G)
 
 def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
     """Graph on the nodes both graphs share, keeping only edges they both have."""
