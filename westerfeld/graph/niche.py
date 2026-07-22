@@ -24,18 +24,6 @@ HABITAT_THRESHOLDS = {
     }
 }
 
-CLASSIFICATION_COLORS = {
-    "Generalist": "#2ca02c",  # Grün
-    "Specialist": "#d62728",  # Rot
-    "None": "#7f7f7f",        # Grau
-}
-
-KINGDOM_MARKERS = {
-    "Fungi": "o",
-    "Bacteria": "^",
-    "Unknown": "s"
-}
-
 def identify_generalists_or_specialists(Pj, habitat_type):
     """
         Niche-breadth approach as described in https://doi.org/10.1093/femsec/fiw174.
@@ -402,7 +390,6 @@ def plot_degree_change(df_change, path="degree_change_analysis.png"):
     plt.tight_layout()
     plt.savefig(path, dpi=300, bbox_inches='tight')
     plt.close()
-
 
 def plot_consistent_degree_change_comparison(
     df_change, 
