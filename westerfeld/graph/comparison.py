@@ -8,7 +8,9 @@ from grakel import ShortestPath, WeisfeilerLehman
 from grakel.kernels import Kernel
 from grakel.utils import graph_from_networkx
 
-from _utils import calc_iou
+from _utils import calc_iou, edge_kingdom_type, _parse_node_kingdom
+
+from graph.niche import _annotate_niche
 
 def graph_metrics(G: nx.Graph) -> dict:
     """
@@ -52,30 +54,12 @@ def graph_metrics(G: nx.Graph) -> dict:
         ),
     }
 
-def _parse_node_kingdom(G: nx.Graph, node):
-    if "kingdom" in G.nodes[node]:
-        return G.nodes[node]["kingdom"]
-    if isinstance(node, str) and ":" in node:
-        return node.split(":", 1)[0]
-    return None
 
-def _canonical_edge_kingdom_type(kingdom_a, kingdom_b):
-    if kingdom_a is None or kingdom_b is None:
-        return None
-    if kingdom_a == kingdom_b:
-        return f"{kingdom_a}-{kingdom_a}"
-    if {kingdom_a, kingdom_b} == {"Fungi", "Bacteria"}:
-        return "Fungi-Bacteria"
-    return "-".join(sorted([kingdom_a, kingdom_b]))
 
 def node_kingdom(G: nx.Graph, node):
     return _parse_node_kingdom(G, node)
 
-def edge_kingdom_type(G: nx.Graph, u, v):
-    attr = G.edges[u, v].get("kingdom_edge")
-    if attr is not None:
-        return attr
-    return _canonical_edge_kingdom_type(_parse_node_kingdom(G, u), _parse_node_kingdom(G, v))
+
 
 def graph_subgraph_by_node_kingdom(G: nx.Graph, kingdom: str) -> nx.Graph:
     nodes = [n for n in G.nodes if _parse_node_kingdom(G, n) == kingdom]

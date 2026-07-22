@@ -8,12 +8,13 @@ from _preparation import (
     relative_abundances,
 )
 
+from _utils import edge_kingdom_type
+
 from graph.comparison import (
     common_subgraph,
     compare_graph_metrics,
     compare_graphs_pairwise,
     compare_graphs_pairwise_node_type_iou,
-    edge_kingdom_type,
     find_similar_subgraphs,
     graph_edge_type_summary,
     graph_metrics,
@@ -28,8 +29,15 @@ from graph.comparison import (
 from graph.creation import (
     CorrelationGraph, 
     GlassoGraph, 
+)
+
+from graph.niche import (
+    plot_graphs_side_by_side_by_niche,
     plot_niche_breadth_boxplot, 
     plot_niche_breadth_vs_abundance_grid,
+    analyze_niche,
+    plot_degree_change,
+    plot_consistent_degree_change_comparison,
 )
 
 
@@ -201,361 +209,6 @@ def plot_graphs_by_edge_type(
     
     print(f"Plot saved to {path}")
     return path
-
-def plot_graphs_side_by_side_by_niche(
-    graphs,
-    labels,
-    path="graph_side_by_side_niche.png",
-    figsize=(14, 7),
-    node_size=80,
-    edge_width=1.0,
-):
-    import matplotlib.pyplot as plt
-    import networkx as nx
-
-    fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
-    if len(graphs) == 1:
-        axes = [axes]
-
-    classification_colors = {
-        "Generalist": "#2ca02c",
-        "Specialist": "#d62728",
-        "None": "#7f7f7f",
-    }
-
-    for ax, G, label in zip(axes, graphs, labels):
-        if G.number_of_nodes() == 0:
-            ax.set_axis_off()
-            continue
-
-        pos = nx.spring_layout(G, seed=42)
-        node_colors = [
-            classification_colors.get(
-                G.nodes[n].get("generalist_or_specialists", "None"),
-                "#7f7f7f",
-            )
-            for n in G.nodes
-        ]
-
-        for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
-            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
-            if not edges:
-                continue
-            nx.draw_networkx_edges(
-                G,
-                pos,
-                edgelist=edges,
-                edge_color="#999999",
-                width=edge_width,
-                alpha=0.6,
-                ax=ax,
-            )
-
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=list(G.nodes),
-            node_color=node_colors,
-            node_size=node_size,
-            ax=ax,
-        )
-
-        ax.set_title(label)
-        ax.set_axis_on()
-        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-
-    legend_handles = [
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=color, markersize=10, label=label)
-        for label, color in (
-            ("Generalist", classification_colors["Generalist"]),
-            ("Specialist", classification_colors["Specialist"]),
-            ("Unclassified", classification_colors["None"]),
-        )
-    ]
-    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    return path
-
-def analyze_niche_overlap(graphs, labels):
-    """
-    Analysiert die Überschneidung von Generalisten und Spezialisten zwischen zwei Habitaten.
-    """
-    import pandas as pd
-
-    if len(graphs) != 2:
-        print("Brauche genau 2 Graphen für den Vergleich.")
-        return
-
-    G1, G2 = graphs
-    label1, label2 = labels
-
-    # 1. Gemeinsame Knoten finden (Taxa, die in beiden Habitaten vorkommen)
-    nodes_g1 = set(G1.nodes())
-    nodes_g2 = set(G2.nodes())
-    common_nodes = nodes_g1.intersection(nodes_g2)
-
-    print(f"Anzahl Knoten {label1}: {len(nodes_g1)}")
-    print(f"Anzahl Knoten {label2}: {len(nodes_g2)}")
-    print(f"Gemeinsame Knoten (Overlap): {len(common_nodes)}")
-    print("-" * 50)
-
-    # 2. Daten für den Vergleich sammeln
-    overlap_data = []
-
-    for node in common_nodes:
-        # Attribute aus beiden Graphen holen
-        attrs1 = G1.nodes[node]
-        attrs2 = G2.nodes[node]
-
-        niche1 = attrs1.get("generalist_or_specialists", "None")
-        niche2 = attrs2.get("generalist_or_specialists", "None")
-
-        # Wir speichern Taxon Name (ohne Kingdom Prefix für bessere Lesbarkeit)
-        taxon_name = node.split(":")[-1]
-        kingdom = attrs1.get("kingdom", "Unknown")
-
-        overlap_data.append({
-            "Taxon": taxon_name,
-            "Kingdom": kingdom,
-            f"Niche_{label1}": niche1,
-            f"Niche_{label2}": niche2,
-            "Status": "Consistent" if niche1 == niche2 else "Changed"
-        })
-
-    df_overlap = pd.DataFrame(overlap_data)
-
-    # 3. Konsolen-Ausgabe der Überschneidungen
-    print("\nÜberschneidungs-Matrix (Anzahl der Taxa):")
-    # Kreuztabelle erstellen
-    cross_tab = pd.crosstab(
-        df_overlap[f"Niche_{label1}"], 
-        df_overlap[f"Niche_{label2}"]
-    )
-    print(cross_tab)
-
-    # 4. Spezifische Gruppen analysieren
-    
-    # A: Stabile Generalisten (In beiden Generalist)
-    stable_gen = df_overlap[
-        (df_overlap[f"Niche_{label1}"] == "Generalist") & 
-        (df_overlap[f"Niche_{label2}"] == "Generalist")
-    ]
-    print(f"\nStabile Generalisten (in beiden): {len(stable_gen)}")
-    if not stable_gen.empty:
-        print(stable_gen[["Taxon", "Kingdom"]].to_string(index=False))
-
-    # B: Stabile Spezialisten
-    stable_spec = df_overlap[
-        (df_overlap[f"Niche_{label1}"] == "Specialist") & 
-        (df_overlap[f"Niche_{label2}"] == "Specialist")
-    ]
-    print(f"\nStabile Spezialisten (in beiden): {len(stable_spec)}")
-    if not stable_spec.empty:
-        print(stable_spec[["Taxon", "Kingdom"]].to_string(index=False))
-
-    # C: Wechsler (z.B. Field: Generalist -> Rhizo: Specialist)
-    changers = df_overlap[df_overlap["Status"] == "Changed"]
-    print(f"\nTaxa mit Status-Wechsel: {len(changers)}")
-    if not changers.empty:
-        print(changers[["Taxon", "Kingdom", f"Niche_{label1}", f"Niche_{label2}"]].to_string(index=False))
-
-    df_overlap.to_excel("niche_overlap_analysis.xlsx", index=False)
-
-    return df_overlap
-
-def analyze_degree_change(graphs, labels, path="degree_change_analysis.png"):
-    """
-    Berechnet die Änderung des Degrees (Anzahl Verbindungen) für Taxa, 
-    die in beiden Habitaten vorkommen.
-    """
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if len(graphs) != 2:
-        print("Brauche genau 2 Graphen.")
-        return
-
-    G1, G2 = graphs
-    label1, label2 = labels
-
-    # 1. Gemeinsame Knoten finden
-    common_nodes = set(G1.nodes()).intersection(set(G2.nodes()))
-
-    change_data = []
-
-    for node in common_nodes:
-        # Degree in beiden Graphen holen
-        deg1 = G1.degree(node)
-        deg2 = G2.degree(node)
-        
-        delta = deg2 - deg1
-        
-        taxon_name = node.split(":")[-1]
-        kingdom = G1.nodes[node].get("kingdom", "Unknown")
-        niche1 = G1.nodes[node].get("generalist_or_specialists", "None")
-        niche2 = G2.nodes[node].get("generalist_or_specialists", "None")
-
-        change_data.append({
-            "Taxon": taxon_name,
-            "Kingdom": kingdom,
-            f"Degree_{label1}": deg1,
-            f"Degree_{label2}": deg2,
-            "Delta_Degree": delta, # Positiv = Zunahme im Rhizo, Negativ = Abnahme
-            f"Niche_{label1}": niche1,
-            f"Niche_{label2}": niche2
-        })
-
-    df_change = pd.DataFrame(change_data)
-
-    # --- Analyse ---
-    
-    # Sortieren nach absoluter Veränderung (größte Veränderungen zuerst)
-    df_change["Abs_Delta"] = df_change["Delta_Degree"].abs()
-    df_sorted = df_change.sort_values(by="Abs_Delta", ascending=False)
-
-    print(f"Degree Change Analyse für {len(common_nodes)} gemeinsame Taxa:")
-    print(df_sorted.head(10).to_string(index=False)) # Top 10 Veränderer
-
-    # --- Visualisierung ---
-    
-    # Wir nehmen die Top 20 Taxa mit der größten Veränderung für den Plot
-    top_n = 20
-    df_plot = df_sorted.head(top_n).copy()
-    
-    # Farben basierend auf Zunahme (Blau) oder Abnahme (Rot)
-    colors = ["#d62728" if x < 0 else "#1f77b4" for x in df_plot["Delta_Degree"]]
-
-    fig, ax = plt.subplots(figsize=(10, 8))
-
-    # Horizontaler Barplot
-    y_pos = np.arange(len(df_plot))
-    ax.barh(y_pos, df_plot["Delta_Degree"], color=colors, alpha=0.7)
-
-    # Labels setzen
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(df_plot["Taxon"])
-    ax.invert_yaxis()  # Größter Wert oben
-    ax.set_xlabel(f"Change in Number of Connections (Degree)\n(Rhizo - Field)", fontsize=12)
-    ax.set_title(f"Top {top_n} Taxa with Largest Network Changes", fontsize=14)
-    ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8) # Nulllinie
-
-    # Legende für Farben
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], color="#d62728", lw=4, label='Lost connections (Field > Rhizo)'),
-        Line2D([0], [0], color="#1f77b4", lw=4, label='Gained connections (Rhizo > Field)'),
-    ]
-    ax.legend(handles=legend_elements, loc='lower right')
-
-    plt.tight_layout()
-    plt.savefig(path, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\nDegree Change Plot saved to {path}")
-    
-    df_change.to_excel("degree_change_analysis.xlsx", index=False)
-    
-    return df_change
-
-def plot_consistent_degree_change_comparison(
-    graphs, 
-    labels, 
-    df_overlap, 
-    path="degree_change_consistent_comparison.png",
-    figsize=(16, 8)
-):
-    """
-    Erstellt einen Plot mit 2 Subplots: 
-    A) Degree Change konsistenter Generalisten
-    B) Degree Change konsistenter Spezialisten
-    """
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if len(graphs) != 2:
-        print("Brauche genau 2 Graphen.")
-        return
-
-    G1, G2 = graphs
-    label1, label2 = labels
-
-    fig, axes = plt.subplots(1, 2, figsize=figsize, sharey=False)
-    
-    # Helper um Node ID zu finden (wie vorher)
-    def find_node_id(taxon_name, G):
-        for node in G.nodes():
-            if node.endswith(f":{taxon_name}"):
-                return node
-        return None
-
-    targets = ["Generalist", "Specialist"]
-
-    for ax, target_class in zip(axes, targets):
-        # 1. Filtern
-        mask = (
-            (df_overlap["Status"] == "Consistent") & 
-            (df_overlap[f"Niche_{label1}"] == target_class) & 
-            (df_overlap[f"Niche_{label2}"] == target_class)
-        )
-        consistent_taxa = df_overlap[mask]
-
-        if consistent_taxa.empty:
-            ax.text(0.5, 0.5, f"No consistent {target_class}s found", ha='center', va='center')
-            ax.set_title(f"Consistent {target_class}s")
-            continue
-
-        # 2. Daten berechnen
-        change_data = []
-        for _, row in consistent_taxa.iterrows():
-            taxon_name = row["Taxon"]
-            node1 = find_node_id(taxon_name, G1)
-            node2 = find_node_id(taxon_name, G2)
-            
-            if node1 and node2:
-                deg1 = G1.degree(node1)
-                deg2 = G2.degree(node2)
-                delta = deg2 - deg1
-                change_data.append({
-                    "Taxon": taxon_name,
-                    "Delta": delta
-                })
-
-        if not change_data:
-            continue
-
-        df_change = pd.DataFrame(change_data)
-        df_change["Abs_Delta"] = df_change["Delta"].abs()
-        df_sorted = df_change.sort_values(by="Abs_Delta", ascending=False)
-
-        # 3. Plotten
-        y_pos = np.arange(len(df_sorted))
-        colors = ["#d62728" if x < 0 else "#1f77b4" for x in df_sorted["Delta"]]
-        
-        ax.barh(y_pos, df_sorted["Delta"], color=colors, alpha=0.7)
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(df_sorted["Taxon"])
-        ax.invert_yaxis()
-        ax.set_title(f"Consistent {target_class}s (n={len(df_sorted)})", fontsize=14, fontweight='bold')
-        ax.axvline(x=0, color='black', linestyle='-', linewidth=0.8)
-        ax.set_xlabel("Change in Connections (Rhizo - Field)")
-
-    # Gemeinsame Legende
-    from matplotlib.lines import Line2D
-    legend_elements = [
-        Line2D([0], [0], color="#d62728", lw=4, label='Lost connections'),
-        Line2D([0], [0], color="#1f77b4", lw=4, label='Gained connections'),
-    ]
-    fig.legend(handles=legend_elements, loc="upper center", ncol=2, frameon=False, bbox_to_anchor=(0.5, 1.05))
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.savefig(path, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Comparison Plot saved to {path}")
 
 def export_cooccurrence_results(path, graphs, labels):
     graph_metrics_df = pd.DataFrame([graph_metrics(graph) for graph in graphs], index=labels)
@@ -817,32 +470,14 @@ def main():
     )
 
 
-    # Boxplot erstellen
-    plot_niche_breadth_boxplot(
-        graphs,
-        labels,
-        path="FigS2_niche_breadth_boxplot.png"
-    )
+    # niche Plots 
+    df_overlap, df_change = analyze_niche(graphs, labels)
+    plot_niche_breadth_boxplot(graphs, labels)
+    plot_niche_breadth_vs_abundance_grid(graphs, labels)
+    plot_degree_change(df_change)
+    plot_consistent_degree_change_comparison(df_change, df_overlap, labels)
 
-
-    plot_niche_breadth_vs_abundance_grid(
-        graphs,
-        labels,
-        path="niche_breadth_vs_mean_relative_abundance_grid.png"
-    )
-
-    df_overlap = analyze_niche_overlap(graphs, labels=labels)
-    analyze_degree_change(graphs, labels=labels)
-    
-    plot_consistent_degree_change_comparison(
-        graphs, 
-        labels, 
-        df_overlap=df_overlap, 
-        path="degree_change_consistent_comparison.png"
-    )
-
-
-
+    # Rest 
     cs = common_subgraph(graph_1, graph_2)
     print(
         f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"
