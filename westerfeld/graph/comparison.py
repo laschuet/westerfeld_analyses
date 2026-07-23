@@ -289,74 +289,57 @@ def plot_graphs_side_by_side(
     if len(graphs) == 1:
         axes = [axes]
 
-    # --- Vorbereitung für den Diff-Mode ---
-    # Wir berechnen die Sets der Kanten für beide Graphen
     if diff_mode and len(graphs) == 2:
         edges_g1 = set(graphs[0].edges())
         edges_g2 = set(graphs[1].edges())
         
-        # Gemeinsame Kanten (Core)
         common_edges = edges_g1.intersection(edges_g2)
-        # Kanten nur in G1
         unique_g1 = edges_g1 - edges_g2
-        # Kanten nur in G2
         unique_g2 = edges_g2 - edges_g1
 
-    # --- Plotting Loop ---
     for i, (ax, G, label) in enumerate(zip(axes, graphs, labels)):
         if G.number_of_nodes() == 0:
             ax.set_axis_off()
             continue
 
-        # Layout berechnen (wir nutzen das gleiche Layout für beide Graphen im Diff-Mode, 
-        # damit die Knoten an der gleichen Stelle bleiben und man besser vergleichen kann)
-        # Im Normal-Mode berechnen wir es pro Graph, da die Knotenmengen ja unterschiedlich sein könnten
         if diff_mode and len(graphs) == 2:
-            # Wir nutzen die Vereinigungsmenge der Knoten für das Layout, damit beide Plots identisch ausgerichtet sind
             all_nodes = set(graphs[0].nodes()).union(set(graphs[1].nodes()))
-            # Erstelle einen temporären Graphen nur für das Layout
             G_layout = nx.Graph()
             G_layout.add_nodes_from(all_nodes)
-            # Füge alle Kanten hinzu, damit die Abstände stimmen
             G_layout.add_edges_from(edges_g1.union(edges_g2))
             pos = nx.spring_layout(G_layout, seed=42)
         else:
             pos = nx.spring_layout(G, seed=42)
 
         if diff_mode and len(graphs) == 2:
-            # --- DIFF MODE LOGIK ---
-            
-            # Bestimme welche Kanten in diesem Graphen 'unique' sind
+
             if i == 0:
                 current_unique = unique_g1
             else:
                 current_unique = unique_g2
 
-            # 1. Zeichne gemeinsame Kanten (Grau, dünn)
             if common_edges:
                 nx.draw_networkx_edges(
                     G,
                     pos,
                     edgelist=list(common_edges),
-                    edge_color="#d3d3d3", # Hellgrau
+                    edge_color="#d3d3d3",
                     width=edge_width * 0.5,
                     alpha=0.4,
                     ax=ax,
                 )
 
-            # 2. Zeichne unique Kanten (Farbig, dick)
             if current_unique:
                 nx.draw_networkx_edges(
                     G,
                     pos,
                     edgelist=list(current_unique),
-                    edge_color="#d62728", # Rot (oder eine andere Signalfarbe)
+                    edge_color="#d62728", 
                     width=edge_width * 2.0,
                     alpha=0.9,
                     ax=ax,
                 )
             
-            # Knoten zeichnen (Option A: Kingdom Colors)
             nx.draw_networkx_nodes(
                 G,
                 pos,
@@ -366,11 +349,9 @@ def plot_graphs_side_by_side(
                 ax=ax,
             )
 
-            # Titel anpassen
             ax.set_title(f"{label} (Diff Mode)")
 
         else:
-            # --- NORMALER MODUS (Original Code) ---
             for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
                 edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
                 if not edges:
@@ -399,7 +380,6 @@ def plot_graphs_side_by_side(
         ax.set_axis_on()
         ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
-    # --- Legende ---
     if diff_mode and len(graphs) == 2:
         legend_handles = [
             Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
@@ -438,21 +418,16 @@ def plot_graphs_by_edge_type(
     Knoten, die nicht zum aktuellen Edge-Type gehören, werden ausgeblendet.
     """
 
-    # Definieren der Edge-Types und Reihenfolge
     edge_types = ["Fungi-Fungi", "Bacteria-Bacteria", "Fungi-Bacteria"]
     
-    # Anzahl der Zeilen = Anzahl der Input-Graphen (z.B. Field, Rhizo)
-    # Anzahl der Spalten = Anzahl der Edge-Types (3)
     n_rows = len(graphs)
     n_cols = len(edge_types)
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
     
-    # Falls nur ein Graph übergeben wird, axes ist 1D, wir brauchen 2D für konsistentes Indexing
     if n_rows == 1:
         axes = axes.reshape(1, -1)
 
-    # Farben für die Edge-Types (optional, für bessere Unterscheidung)
     edge_colors_map = {
         "Fungi-Fungi": "#1f77b4",      # Blau
         "Bacteria-Bacteria": "#ff7f0e", # Orange
@@ -463,22 +438,15 @@ def plot_graphs_by_edge_type(
         for j, e_type in enumerate(edge_types):
             ax = axes[i, j]
             
-            # 1. Filtere Kanten des aktuellen Typs
             edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == e_type]
             
-            # 2. Bestimme die Knoten, die an diesen Kanten beteiligt sind
             active_nodes = set()
             for u, v in edges:
                 active_nodes.add(u)
                 active_nodes.add(v)
             
-            # Erstelle einen Subgraphen, der nur diese Knoten und Kanten enthält
-            # Das macht das Plotten einfacher und sorgt dafür, dass Layout-Algorithmen
-            # sich nur auf den relevanten Teil konzentrieren.
             if active_nodes:
                 G_sub = G.edge_subgraph(edges).copy()
-                # node_subgraph würde auch gehen, aber edge_subgraph impliziert die Knoten meist schon.
-                # Sicherstellen, dass nur die verbundenen Knoten drin sind:
                 G_sub = G_sub.subgraph(active_nodes)
             else:
                 G_sub = nx.Graph()
@@ -489,11 +457,8 @@ def plot_graphs_by_edge_type(
                 ax.set_axis_off()
                 continue
 
-            # Layout berechnen (Seed für Reproduzierbarkeit)
-            # Wir nutzen hier das Layout auf dem Subgraphen, damit die Knoten nah beieinander liegen
             pos = nx.spring_layout(G_sub, seed=42)
 
-            # Kanten zeichnen
             nx.draw_networkx_edges(
                 G_sub,
                 pos,
@@ -503,12 +468,8 @@ def plot_graphs_by_edge_type(
                 ax=ax,
             )
 
-            # Knoten zeichnen
-            # Wir färben die Knoten hier einfach nach ihrer Kingdom-Herkunft, 
-            # damit man sieht, wer wer ist (hilfreich bei Fungi-Bacteria)
             node_colors = []
             for node in G_sub.nodes():
-                # Annahme: Node-Name ist "Kingdom:Taxon", z.B. "Fungi:GenusX"
                 if "Fungi:" in node:
                     node_colors.append("#1f77b4") # Blau für Pilze
                 elif "Bacteria:" in node:
@@ -523,15 +484,10 @@ def plot_graphs_by_edge_type(
                 node_size=node_size_active,
                 ax=ax,
             )
-            
-            # Optional: Labels (kann bei vielen Knoten unübersichtlich werden, erstmal auskommentiert)
-            # nx.draw_networkx_labels(G_sub, pos, font_size=8, ax=ax)
-
-            # Titel und Achsen
+        
             ax.set_title(f"{label} - {e_type}")
             ax.set_axis_off()
 
-    # Legende für die Knotenfarben (Kingdoms)
     legend_handles = [
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi"),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#ff7f0e", markersize=10, label="Bacteria"),
@@ -553,20 +509,12 @@ def plot_diff_grid(
     node_size: int = 80,
     edge_width: float = 1.0,
 ):
-    import matplotlib.pyplot as plt
-    import networkx as nx
-    from matplotlib.lines import Line2D
 
-    # Wir brauchen genau 2 Graphen für diesen Vergleich
     if len(graphs) != 2:
         raise ValueError("Diese Funktion benötigt genau 2 Graphen für den 2x2 Vergleich.")
 
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     
-    # axes ist ein 2D Array [[ax00, ax01], [ax10, ax11]]
-    # Wir flachen es nicht ab, sondern nutzen explizit die Indizes
-    
-    # --- Vorbereitung: Kanten berechnen ---
     edges_g1 = set(graphs[0].edges())
     edges_g2 = set(graphs[1].edges())
     
@@ -574,16 +522,12 @@ def plot_diff_grid(
     unique_g1 = edges_g1 - edges_g2
     unique_g2 = edges_g2 - edges_g1
 
-    # --- Layout berechnen ---
-    # Wir nutzen ein gemeinsames Layout für ALLE 4 Plots, damit man Knoten leicht vergleichen kann.
-    # Basis ist die Vereinigung aller Knoten und Kanten.
     all_nodes = set(graphs[0].nodes()).union(set(graphs[1].nodes()))
     G_layout = nx.Graph()
     G_layout.add_nodes_from(all_nodes)
     G_layout.add_edges_from(edges_g1.union(edges_g2))
     pos = nx.spring_layout(G_layout, seed=42)
 
-    # --- Plotting Helper ---
     def draw_subplot(ax, G, edges_to_draw, title, color_mode="common"):
         """
         Zeichnet einen einzelnen Subplot.
@@ -596,9 +540,7 @@ def plot_diff_grid(
             ax.set_axis_off()
             return
 
-        # Kanten zeichnen
         if color_mode == "common":
-            # Bunt nach Edge-Type
             for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in edges_to_draw}):
                 edges_of_type = [e for e in edges_to_draw if edge_kingdom_type(G, e[0], e[1]) == edge_type]
                 nx.draw_networkx_edges(
@@ -607,15 +549,12 @@ def plot_diff_grid(
                     width=edge_width, alpha=0.8, ax=ax
                 )
         else:
-            # Unique: Einheitliche Farbe (z.B. Rot oder Dunkelgrau)
             nx.draw_networkx_edges(
                 G, pos, edgelist=list(edges_to_draw),
                 edge_color="#d62728", # Rot
                 width=edge_width * 1.5, alpha=0.8, ax=ax
             )
 
-        # Knoten zeichnen (immer gleich)
-        # Wir zeichnen nur Knoten, die auch in diesem Graph G existieren
         nx.draw_networkx_nodes(
             G, pos, nodelist=list(G.nodes),
             node_color=[_node_color(G, n) for n in G.nodes],
@@ -624,21 +563,12 @@ def plot_diff_grid(
         
         ax.set_axis_off()
 
-    # --- Die 4 Plots füllen ---
-    
-    # Reihe 1: Field Soil (Graph 0)
-    # Links: Common
     draw_subplot(axes[0, 0], graphs[0], common_edges, f"{labels[0]} - Common Edges", color_mode="common")
-    # Rechts: Unique
     draw_subplot(axes[0, 1], graphs[0], unique_g1, f"{labels[0]} - Unique Edges", color_mode="unique")
 
-    # Reihe 2: Rhizosphere (Graph 1)
-    # Links: Common
     draw_subplot(axes[1, 0], graphs[1], common_edges, f"{labels[1]} - Common Edges", color_mode="common")
-    # Rechts: Unique
     draw_subplot(axes[1, 1], graphs[1], unique_g2, f"{labels[1]} - Unique Edges", color_mode="unique")
 
-    # --- Legende ---
     legend_handles = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
@@ -667,7 +597,6 @@ def plot_common_only(
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs a required.")
 
-    # 1. Find common edges 
     edges_g1 = set(graphs[0].edges())
     edges_g2 = set(graphs[1].edges())
     common_edges = edges_g1.intersection(edges_g2)
@@ -678,16 +607,10 @@ def plot_common_only(
 
     G_common = nx.edge_subgraph(graphs[0], common_edges).copy()
     
-    # Optional: Falls du willst, dass die Knotenbeschriftungen (Labels) angezeigt werden, 
-    # da es jetzt übersichtlich ist, könntest du das hier einkommentieren:
-    # node_labels = {n: n.split(":")[-1] for n in G_common.nodes()} # Nur den Taxon-Namen ohne Kingdom
-
     fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-    # Layout berechnen (nur für den Common-Graphen)
-    pos = nx.spring_layout(G_common, seed=42, k=0.5) # k=0.5 zieht die Knoten etwas auseinander
+    pos = nx.spring_layout(G_common, seed=42, k=0.5)
 
-    # Kanten zeichnen (Bunt nach Typ)
     for edge_type in sorted({edge_kingdom_type(G_common, u, v) for u, v in G_common.edges()}):
         edges_of_type = [e for e in G_common.edges() if edge_kingdom_type(G_common, e[0], e[1]) == edge_type]
         nx.draw_networkx_edges(
@@ -700,7 +623,6 @@ def plot_common_only(
             ax=ax,
         )
 
-    # Knoten zeichnen
     nx.draw_networkx_nodes(
         G_common,
         pos,
@@ -710,13 +632,9 @@ def plot_common_only(
         ax=ax,
     )
     
-    # Optional: Labels zeichnen (Vorsicht: Bei langen Namen wird es unübersichtlich)
-    # nx.draw_networkx_labels(G_common, pos, labels=node_labels, font_size=8, ax=ax)
-
     ax.set_title(f"Common Edges Network ({G_common.number_of_nodes()} Nodes, {G_common.number_of_edges()} Edges)\nIntersection of {labels[0]} & {labels[1]}")
     ax.set_axis_off()
 
-    # Legende
     legend_handles = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi node"),
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ca02c", markersize=10, label="Bacteria node"),
@@ -737,13 +655,10 @@ def plot_common_only_detailed(
     graphs: list[nx.Graph],
     labels: list[str],
     path: str = "graph_common_only_detailed.png",
-    figsize: tuple[float, float] = (18, 6), # Breit für 3 Spalten
-    node_size: int = 300, # Größer, da wir weniger pro Plot haben
+    figsize: tuple[float, float] = (18, 6), 
+    node_size: int = 300, 
     edge_width: float = 2.0,
 ):
-    import matplotlib.pyplot as plt
-    import networkx as nx
-
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs required.")
 
@@ -755,15 +670,12 @@ def plot_common_only_detailed(
         print("No common edges found.")
         return
 
-    # Wir erstellen einen temporären Graphen nur für die Common Edges
     G_common = nx.edge_subgraph(graphs[0], common_edges).copy()
 
-    # Definiere die 3 Subplots
     edge_types = ["Fungi-Fungi", "Bacteria-Bacteria", "Fungi-Bacteria"]
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
     for ax, e_type in zip(axes, edge_types):
-        # 1. Filtere Kanten und Knoten für diesen Typ
         edges = [e for e in G_common.edges() if edge_kingdom_type(G_common, e[0], e[1]) == e_type]
         
         if not edges:
@@ -772,13 +684,10 @@ def plot_common_only_detailed(
             ax.set_axis_off()
             continue
 
-        # Subgraphen erstellen für sauberes Layout
         G_sub = G_common.edge_subgraph(edges).copy()
         
-        # Layout berechnen
         pos = nx.spring_layout(G_sub, seed=42, k=0.8) # k=0.8 sorgt für mehr Abstand
 
-        # Kanten zeichnen
         nx.draw_networkx_edges(
             G_sub, pos,
             edge_color=_edge_color(e_type),
@@ -787,7 +696,6 @@ def plot_common_only_detailed(
             ax=ax
         )
 
-        # Knoten zeichnen
         nx.draw_networkx_nodes(
             G_sub, pos,
             node_color=[_node_color(G_sub, n) for n in G_sub.nodes],
@@ -795,8 +703,6 @@ def plot_common_only_detailed(
             ax=ax
         )
 
-        # LABELS ZEICHNEN
-        # Wir nehmen nur den Genus-Namen (alles nach dem Doppelpunkt)
         labels_dict = {n: n.split(":")[-1] for n in G_sub.nodes()}
         nx.draw_networkx_labels(
             G_sub, pos, 
@@ -808,7 +714,6 @@ def plot_common_only_detailed(
         ax.set_title(f"{e_type}\n({G_sub.number_of_nodes()} Nodes, {G_sub.number_of_edges()} Edges)")
         ax.set_axis_off()
 
-    # Haupttitel
     fig.suptitle(f"Common Edges: {labels[0]} & {labels[1]}", fontsize=16)
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])
