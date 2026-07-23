@@ -777,15 +777,6 @@ def shared_nodes(G1: nx.Graph, G2: nx.Graph) -> list:
 def shared_edges(G1: nx.Graph, G2: nx.Graph) -> list:
     return sorted(_canonical_edges(G1) & _canonical_edges(G2))
 
-def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
-    """Graph on the nodes both graphs share, keeping only edges they both have."""
-    nodes = set(shared_nodes(G1, G2))
-    edges = [e for e in shared_edges(G1, G2) if e[0] in nodes and e[1] in nodes]
-    G = nx.Graph()
-    G.add_nodes_from(nodes)
-    G.add_edges_from(edges)
-    return G
-
 def _filter_graph_by_node_kingdom(G: nx.Graph, kingdom: str | None) -> nx.Graph:
     if kingdom is None:
         return G

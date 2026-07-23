@@ -151,16 +151,6 @@ def export_cooccurrence_results(path, graphs, labels):
         for name, df in node_iou_sheets.items():
             df.to_excel(writer, sheet_name=_sanitize_sheet_name(name))
 
-        common_df = pd.DataFrame(
-            [
-                {
-                    "common_nodes": common_subgraph(graphs[0], graphs[1]).number_of_nodes(),
-                    "common_edges": common_subgraph(graphs[0], graphs[1]).number_of_edges(),
-                }
-            ]
-        )
-        common_df.to_excel(writer, sheet_name=_sanitize_sheet_name("Common Subgraph"), index=False)
-
 def cooccurrence(
     kingdoms,
     graph_creator,
@@ -282,10 +272,6 @@ def main():
     print("\nPairwise nodes_iou for Bacteria nodes")
     print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Bacteria"))
 
-    cs = common_subgraph(graph_1, graph_2)
-    print(
-        f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"
-    )
     for graph, label in zip(graphs, labels):
         node_attrs = pd.DataFrame.from_dict(dict(graph.nodes(data=True)), orient="index")
         if "generalist_or_specialists" in node_attrs.columns:
