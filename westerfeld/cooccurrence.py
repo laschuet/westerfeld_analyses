@@ -9,7 +9,6 @@ from _preparation import (
 )
 
 from graph.comparison import (
-    common_subgraph,
     compare_graph_metrics,
     compare_graphs_pairwise,
     graph_edge_type_summary,
