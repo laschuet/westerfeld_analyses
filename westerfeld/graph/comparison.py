@@ -4,13 +4,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from grakel import ShortestPath, WeisfeilerLehman
-from grakel.kernels import Kernel
-from grakel.utils import graph_from_networkx
-
 from _utils import calc_iou, edge_kingdom_type, _parse_node_kingdom
-
-from graph.niche import _annotate_niche
 
 def graph_metrics(G: nx.Graph) -> dict:
     """
@@ -54,12 +48,8 @@ def graph_metrics(G: nx.Graph) -> dict:
         ),
     }
 
-
-
 def node_kingdom(G: nx.Graph, node):
     return _parse_node_kingdom(G, node)
-
-
 
 def graph_subgraph_by_node_kingdom(G: nx.Graph, kingdom: str) -> nx.Graph:
     nodes = [n for n in G.nodes if _parse_node_kingdom(G, n) == kingdom]
@@ -291,6 +281,128 @@ def plot_graphs_side_by_side(
     plt.close(fig)
     return path
 
+def plot_graphs_by_edge_type(
+    graphs,
+    labels,
+    path="graph_by_edge_type.png",
+    figsize=(18, 12),
+    node_size_active=100,
+    node_size_inactive=0,  # Auf 0 gesetzt, damit irrelevante Knoten komplett verschwinden
+    edge_width=1.5,
+):
+    """
+    Erstellt für jeden Input-Graphen drei Subplots: einen für jeden Edge-Type
+    (Fungi-Fungi, Bacteria-Bacteria, Fungi-Bacteria).
+    Knoten, die nicht zum aktuellen Edge-Type gehören, werden ausgeblendet.
+    """
+
+    # Definieren der Edge-Types und Reihenfolge
+    edge_types = ["Fungi-Fungi", "Bacteria-Bacteria", "Fungi-Bacteria"]
+    
+    # Anzahl der Zeilen = Anzahl der Input-Graphen (z.B. Field, Rhizo)
+    # Anzahl der Spalten = Anzahl der Edge-Types (3)
+    n_rows = len(graphs)
+    n_cols = len(edge_types)
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    
+    # Falls nur ein Graph übergeben wird, axes ist 1D, wir brauchen 2D für konsistentes Indexing
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+
+    # Farben für die Edge-Types (optional, für bessere Unterscheidung)
+    edge_colors_map = {
+        "Fungi-Fungi": "#1f77b4",      # Blau
+        "Bacteria-Bacteria": "#ff7f0e", # Orange
+        "Fungi-Bacteria": "#2ca02c",   # Grün
+    }
+
+    for i, (G, label) in enumerate(zip(graphs, labels)):
+        for j, e_type in enumerate(edge_types):
+            ax = axes[i, j]
+            
+            # 1. Filtere Kanten des aktuellen Typs
+            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == e_type]
+            
+            # 2. Bestimme die Knoten, die an diesen Kanten beteiligt sind
+            active_nodes = set()
+            for u, v in edges:
+                active_nodes.add(u)
+                active_nodes.add(v)
+            
+            # Erstelle einen Subgraphen, der nur diese Knoten und Kanten enthält
+            # Das macht das Plotten einfacher und sorgt dafür, dass Layout-Algorithmen
+            # sich nur auf den relevanten Teil konzentrieren.
+            if active_nodes:
+                G_sub = G.edge_subgraph(edges).copy()
+                # node_subgraph würde auch gehen, aber edge_subgraph impliziert die Knoten meist schon.
+                # Sicherstellen, dass nur die verbundenen Knoten drin sind:
+                G_sub = G_sub.subgraph(active_nodes)
+            else:
+                G_sub = nx.Graph()
+
+            if G_sub.number_of_nodes() == 0:
+                ax.text(0.5, 0.5, "No edges", ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f"{label}\n{e_type}")
+                ax.set_axis_off()
+                continue
+
+            # Layout berechnen (Seed für Reproduzierbarkeit)
+            # Wir nutzen hier das Layout auf dem Subgraphen, damit die Knoten nah beieinander liegen
+            pos = nx.spring_layout(G_sub, seed=42)
+
+            # Kanten zeichnen
+            nx.draw_networkx_edges(
+                G_sub,
+                pos,
+                edge_color=edge_colors_map.get(e_type, "gray"),
+                width=edge_width,
+                alpha=0.6,
+                ax=ax,
+            )
+
+            # Knoten zeichnen
+            # Wir färben die Knoten hier einfach nach ihrer Kingdom-Herkunft, 
+            # damit man sieht, wer wer ist (hilfreich bei Fungi-Bacteria)
+            node_colors = []
+            for node in G_sub.nodes():
+                # Annahme: Node-Name ist "Kingdom:Taxon", z.B. "Fungi:GenusX"
+                if "Fungi:" in node:
+                    node_colors.append("#1f77b4") # Blau für Pilze
+                elif "Bacteria:" in node:
+                    node_colors.append("#ff7f0e") # Orange für Bakterien
+                else:
+                    node_colors.append("gray")
+
+            nx.draw_networkx_nodes(
+                G_sub,
+                pos,
+                node_color=node_colors,
+                node_size=node_size_active,
+                ax=ax,
+            )
+            
+            # Optional: Labels (kann bei vielen Knoten unübersichtlich werden, erstmal auskommentiert)
+            # nx.draw_networkx_labels(G_sub, pos, font_size=8, ax=ax)
+
+            # Titel und Achsen
+            ax.set_title(f"{label} - {e_type}")
+            ax.set_axis_off()
+
+    # Legende für die Knotenfarben (Kingdoms)
+    legend_handles = [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#1f77b4", markersize=10, label="Fungi"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#ff7f0e", markersize=10, label="Bacteria"),
+    ]
+    fig.legend(handles=legend_handles, loc="upper center", ncol=2, frameon=False)
+    
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Plot saved to {path}")
+    return path
+
 def plot_diff_grid(
     graphs: list[nx.Graph],
     labels: list[str],
@@ -480,12 +592,10 @@ def plot_common_only(
     return path
 
 def export_common_edges_to_excel(
+    path: str, 
     graphs: list[nx.Graph],
     labels: list[str],
-    path: str = "common_edges.xlsx",
 ):
-    import pandas as pd
-
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs required.")
 
@@ -498,17 +608,13 @@ def export_common_edges_to_excel(
         return
 
     data = []
-    # Wir nutzen graphs[0] als Referenz für die Gewichte (da die Kanten ja identisch sind)
     G_ref = graphs[0]
 
     for u, v in common_edges:
-        # Edge-Typ bestimmen
         e_type = edge_kingdom_type(G_ref, u, v)
         
-        # Gewicht (Korrelation) holen
         weight = G_ref[u][v].get('weight', 0)
         
-        # Taxon-Namen säubern (nur den Teil nach dem Doppelpunkt für bessere Lesbarkeit)
         name_u = u.split(":")[-1]
         name_v = v.split(":")[-1]
 
@@ -517,16 +623,11 @@ def export_common_edges_to_excel(
             "Taxon_1": name_u,
             "Taxon_2": name_v,
             "Correlation": weight,
-            "Node_ID_1": u, # Vollständige ID falls benötigt
-            "Node_ID_2": v,
         })
 
     df = pd.DataFrame(data)
-    
-    # Sortieren: Erst nach Typ, dann nach Korrelation (stärkste zuerst)
     df = df.sort_values(by=["Edge_Type", "Correlation"], ascending=[True, False])
 
-    # Speichern
     df.to_excel(path, index=False)
     print(f"Common edges exported to {path} ({len(df)} edges).")
     return path
@@ -676,12 +777,6 @@ def shared_nodes(G1: nx.Graph, G2: nx.Graph) -> list:
 def shared_edges(G1: nx.Graph, G2: nx.Graph) -> list:
     return sorted(_canonical_edges(G1) & _canonical_edges(G2))
 
-#def is_subgraph(G_sub: nx.Graph, G: nx.Graph) -> bool:
-#    """True iff every node and every edge of G_sub is also in G."""
-#    if not set(G_sub.nodes) <= set(G.nodes):
-#        return False
-#    return _canonical_edges(G_sub) <= _canonical_edges(G)
-
 def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
     """Graph on the nodes both graphs share, keeping only edges they both have."""
     nodes = set(shared_nodes(G1, G2))
@@ -690,75 +785,6 @@ def common_subgraph(G1: nx.Graph, G2: nx.Graph) -> nx.Graph:
     G.add_nodes_from(nodes)
     G.add_edges_from(edges)
     return G
-
-def _graph_equal(g1: nx.Graph, g2: nx.Graph) -> bool:
-    """Equal iff the node sets and (unordered) edge sets match."""
-    return set(g1.nodes) == set(g2.nodes) and _canonical_edges(g1) == _canonical_edges(
-        g2
-    )
-
-def find_similar_subgraphs(G1: nx.Graph, G2: nx.Graph, n: int = -1) -> list[nx.Graph]:
-    """
-    BFS enumeration of common connected substructures of `G1` and `G2`.
-
-    Seeds with one trivial subgraph per shared node, then repeatedly extends
-    each candidate by one shared edge whose `positive_association` attribute
-    agrees in both graphs. Returns every reachable substructure (deepest last);
-    pass `n` to return only the last `n` of them.
-
-    Can be expensive on large dense graphs: the enumeration runs to completion
-    regardless of `n` (which only slices the return).
-    """
-    candidate_edges = {
-        e
-        for e in _canonical_edges(G1) & _canonical_edges(G2)
-        if G1.edges[e].get("positive_association")
-        == G2.edges[e].get("positive_association")
-    }
-
-    structures: list[nx.Graph] = []
-    for node in shared_nodes(G1, G2):
-        h = nx.Graph()
-        h.add_node(node)
-        structures.append(h)
-
-    frontier = list(structures)
-    while frontier:
-        new_structures: list[nx.Graph] = []
-        for g in frontier:
-            g_nodes = set(g.nodes)
-            g_edges = _canonical_edges(g)
-            for e in candidate_edges:
-                if e in g_edges:
-                    continue
-                if e[0] not in g_nodes and e[1] not in g_nodes:
-                    continue
-                h = g.copy()
-                h.add_edge(
-                    *e,
-                    positive_association=G1.edges[e].get("positive_association"),
-                )
-                if any(_graph_equal(h, s) for s in new_structures):
-                    continue
-                new_structures.append(h)
-        structures.extend(new_structures)
-        frontier = new_structures
-
-    if n != -1:
-        return structures[-n:]
-    return structures
-
-def _grakel_graph(G: nx.Graph, attribute=None):
-    if attribute is None:
-        # Inject node names as dummy labels so grakel has something to work with
-        G = G.copy()
-        nx.set_node_attributes(G, {n: {"label": str(n)} for n in G.nodes})
-        attribute = "label"
-    return next(graph_from_networkx([G], node_labels_tag=attribute))
-
-def graph_kernel(graphs: list[nx.Graph], kernel: Kernel, label=None):
-    grakel_graphs = [_grakel_graph(g, attribute=label) for g in graphs]
-    return kernel.fit_transform(grakel_graphs)
 
 def _filter_graph_by_node_kingdom(G: nx.Graph, kingdom: str | None) -> nx.Graph:
     if kingdom is None:
@@ -783,19 +809,7 @@ def _iou_edges(g1, g2, pair_type: str | None = None):
     e1 = ["|".join(sorted(e)) for e in g1.edges]
     e2 = ["|".join(sorted(e)) for e in g2.edges]
     return calc_iou(e1, e2)
-
-def _kernel_shortest_path(g1, g2, normalize=True):
-    return graph_kernel([g1, g2], ShortestPath(normalize=normalize))[1, 0]
-
-def _kernel_weisfeiler_lehman(g1, g2, normalize=True):
     return graph_kernel([g1, g2], WeisfeilerLehman(normalize=normalize))[1, 0]
-
-_METRICS = {
-    "nodes_iou": _iou_nodes,
-    "edges_iou": _iou_edges,
-    "kernel_shortest_path": _kernel_shortest_path,
-    "kernel_weisfeiler_lehman": _kernel_weisfeiler_lehman,
-}
 
 def compare_graphs_pairwise(
     graphs: list[nx.Graph],
@@ -842,3 +856,9 @@ def compare_graphs_pairwise(
                     )
                 matrix.iloc[i, j] = fn(gi, gj, **metric_kwargs)
     return matrix
+
+_METRICS = {
+    "nodes_iou": _iou_nodes,
+    "edges_iou": _iou_edges,
+}
+
