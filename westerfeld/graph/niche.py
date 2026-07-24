@@ -15,7 +15,7 @@ HABITAT_THRESHOLDS = {
     "Field_Soil": {
         "mean_rel_abundance": 2e-5,
         "specialist": 1.5,
-        "generalist": 28.0,  
+        "generalist": 27.5,  
     },
     "Rhizosphere": {
         "mean_rel_abundance": 2e-5,
@@ -122,7 +122,7 @@ def plot_niche_breadth_boxplot(
 
     for label in labels:
         if "Field" in label:
-            ax.axhline(y=28, color='blue', linestyle=':', alpha=0.5, label='FS Threshold Generalist (28)')
+            ax.axhline(y=27.5, color='blue', linestyle=':', alpha=0.5, label='FS Threshold Generalist (27.5)')
             ax.axhline(y=1.5, color='blue', linestyle='-', alpha=0.5, label='FS Threshold Specialist (1.5)')
 
         elif "Rhizo" in label:
@@ -131,7 +131,7 @@ def plot_niche_breadth_boxplot(
     
     handles, labels_legend = ax.get_legend_handles_labels()
     by_label = dict(zip(labels_legend, handles))
-    ax.legend(by_label.values(), by_label.keys(), loc='upper right')
+    ax.legend(by_label.values(), by_label.keys(), loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False)
 
     plt.tight_layout()
     plt.savefig(path, dpi=300, bbox_inches='tight')
@@ -143,7 +143,7 @@ def plot_niche_breadth_boxplot(
 def plot_niche_breadth_vs_abundance_grid(
     graphs,
     labels,
-    path="niche_breadth_vs_abundance_grid.png",
+    path="FigS3_niche_breadth_vs_abundance.png",
     figsize=(14, 7),
 ):
     df = extract_niche_data(graphs, labels)
@@ -224,9 +224,9 @@ def plot_niche_breadth_vs_abundance_grid(
 def plot_graphs_side_by_side_by_niche(
     graphs,
     labels,
-    path="graph_side_by_side_niche.png",
+    path="Fig6_graph_side_by_side_niche.png",
     figsize=(14, 7),
-    node_size=80,
+    node_size=50,
     edge_width=1.0,
 ):
 
@@ -235,7 +235,7 @@ def plot_graphs_side_by_side_by_niche(
         axes = [axes]
 
     classification_colors = {
-        "Generalist": "#2ca02c",
+        "Generalist": "#2422b8",
         "Specialist": "#d62728",
         "None": "#7f7f7f",
     }
@@ -246,36 +246,45 @@ def plot_graphs_side_by_side_by_niche(
             continue
 
         pos = nx.spring_layout(G, seed=42)
-        node_colors = [
-            classification_colors.get(
-                G.nodes[n].get("generalist_or_specialists", "None"),
-                "#7f7f7f",
-            )
-            for n in G.nodes
-        ]
+        
+        # Knoten in zwei Listen aufteilen
+        nodes_colored = []
+        nodes_gray = []
+        colors_colored = []
+        
+        for n in G.nodes:
+            niche = G.nodes[n].get("generalist_or_specialists", "None")
+            if niche == "None":
+                nodes_gray.append(n)
+            else:
+                nodes_colored.append(n)
+                colors_colored.append(classification_colors.get(niche, "#7f7f7f"))
 
+        # Kanten zeichnen (wie gehabt)
         for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
             edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
             if not edges:
                 continue
             nx.draw_networkx_edges(
-                G,
-                pos,
-                edgelist=edges,
-                edge_color="#999999",
-                width=edge_width,
-                alpha=0.6,
-                ax=ax,
+                G, pos, edgelist=edges, edge_color="#999999",
+                width=edge_width, alpha=0.6, ax=ax,
             )
 
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=list(G.nodes),
-            node_color=node_colors,
-            node_size=node_size,
-            ax=ax,
-        )
+        # 1. Graue Knoten zeichnen (Transparent)
+        if nodes_gray:
+            nx.draw_networkx_nodes(
+                G, pos, nodelist=nodes_gray, node_color="#7f7f7f",
+                node_size=node_size, alpha=0.2, ax=ax  # <--- Alpha 0.2
+            )
+
+        # 2. Bunte Knoten zeichnen (Deckend)
+        if nodes_colored:
+            nx.draw_networkx_nodes(
+                G, pos, nodelist=nodes_colored, node_color=colors_colored,
+                node_size=node_size, alpha=1.0, 
+                edgecolors="#454545", linewidths=0.5,
+                ax=ax
+            )
 
         ax.set_title(label)
         ax.set_axis_on()
