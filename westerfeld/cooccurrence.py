@@ -14,10 +14,7 @@ from graph.comparison import (
     graph_edge_type_summary,
     graph_metrics,
     graph_node_type_summary,
-    plot_graphs_side_by_side,
-    plot_graphs_by_edge_type,
     plot_diff_grid,
-    plot_common_only,
     export_common_edges_to_excel,
     plot_common_only_detailed,
 )
@@ -279,11 +276,8 @@ def main():
   
 
     # Plots network
-    plot_graphs_side_by_side(graphs, labels)
     plot_diff_grid(graphs, labels)
-    plot_common_only(graphs, labels)
     plot_common_only_detailed(graphs, labels)
-    plot_graphs_by_edge_type(graphs, labels)
     plot_graphs_side_by_side_by_niche(graphs, labels)
 
     # Plots niche
