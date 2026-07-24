@@ -340,6 +340,7 @@ def plot_diff_grid(
             ax=ax
         )
         
+        ax.set_title(f"{title}\n({G_sub.number_of_nodes()} Nodes, {G_sub.number_of_edges()} Edges)")
         ax.set_axis_off()
 
     # Zeile 1: all edges 
