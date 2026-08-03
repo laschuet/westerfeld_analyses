@@ -24,8 +24,7 @@ from graph.creation import (
 
 from graph.niche import (
     plot_graphs_side_by_side_by_niche,
-    plot_niche_breadth_boxplot, 
-    plot_niche_breadth_vs_abundance_grid,
+    plot_occurrence_vs_abundance_grid,
     analyze_niche,
     plot_degree_change,
     plot_consistent_degree_change_comparison,
@@ -281,11 +280,10 @@ def main():
     plot_graphs_side_by_side_by_niche(graphs, labels)
 
     # Plots niche
-    df_overlap, df_change = analyze_niche(graphs, labels)
-    plot_niche_breadth_boxplot(graphs, labels)
-    plot_niche_breadth_vs_abundance_grid(graphs, labels)
-    plot_degree_change(df_change)
-    plot_consistent_degree_change_comparison(df_change, df_overlap, labels)
+    #df_overlap, df_change = analyze_niche(graphs, labels)
+    plot_occurrence_vs_abundance_grid(graphs, labels)
+    #plot_degree_change(df_change)
+    #plot_consistent_degree_change_comparison(df_change, df_overlap, labels)
 
     # Excel exports 
     export_common_edges_to_excel("common_edges_list.xlsx", graphs, labels)

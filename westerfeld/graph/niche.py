@@ -24,53 +24,102 @@ HABITAT_THRESHOLDS = {
     }
 }
 
-def identify_generalists_or_specialists(Pj, habitat_type):
+import pandas as pd
+import numpy as np
+
+def identify_generalists_or_specialists(df_relative):
     """
-        Niche-breadth approach as described in https://doi.org/10.1093/femsec/fiw174.
+    Identifiziert Generalisten und Spezialisten basierend auf Occurrence Frequency 
+    und lokaler Abundanz (Mean Abundance given Presence).
 
-        Returns the classification (or ``None``), the mean relative abundance, and
-        the niche-breadth value Bj.
+    Kriterien:
+    - Generalist: Occurrence Frequency >= 60% der Samples.
+    - Spezialist: Occurrence Frequency <= 5% der Samples UND 
+                  lokal abundant (mittlere Abundanz in positiven Samples >= 5%).
+    
+    Parameters
+    ----------
+    df_relative : pd.DataFrame
+        DataFrame mit relativen Abundanzen. 
+        Rows = Samples, Columns = Taxa.
+
+    Returns
+    -------
+    classifications : pd.Series
+        Klassifizierung pro Taxon ("Generalist", "Specialist" oder None).
+    mean_rel_abundances : pd.Series
+        Globale mittlere relative Abundanz pro Taxon (über alle Samples).
+    occurrence_frequencies : pd.Series
+        Anteil der Samples, in denen das Taxon vorkommt (> 0).
     """
-    if habitat_type not in HABITAT_THRESHOLDS:
-        raise ValueError(f"Unknown habitat type: {habitat_type}. Only Field_Soil or Rhizosphere possible.")
+    if df_relative.empty:
+        return pd.Series(dtype=object), pd.Series(dtype=float), pd.Series(dtype=float)
 
-    thresholds = HABITAT_THRESHOLDS[habitat_type]
-    gen_thresh = thresholds["generalist"]
-    spec_thresh = thresholds["specialist"]
-    mean_thresh = thresholds["mean_rel_abundance"]
+    n_samples, n_taxa = df_relative.shape
+    mean_rel_abundances = df_relative.mean(axis=0)
+    occurrence_frequencies = (np.count_nonzero(df_relative, axis=0) / n_samples)
 
-    Pj = Pj / Pj.sum()
-    mean_relative_abundance = Pj.mean()
-    if mean_relative_abundance < mean_thresh:
-        return None, np.array([]), np.array([])
-    Bj = 1 / (Pj**2).sum()
-    if Bj > gen_thresh:
-        return "Generalist", mean_relative_abundance, Bj
-    elif Bj < spec_thresh:
-        return "Specialist", mean_relative_abundance, Bj
-    return None, mean_relative_abundance, Bj
+    local_abundances = df_relative.replace(0, np.nan).mean(axis=0)
+
+    classifications = pd.Series(None, index=df_relative.columns, dtype=object)
+
+    # --- Generalisten Logik ---
+
+    gen_occ_mask = occurrence_frequencies >= 0.60
+    gen_abund_thresh = local_abundances.quantile(0.60)
+    gen_abund_mask = local_abundances < gen_abund_thresh
+    generalist_mask = gen_occ_mask & gen_abund_mask
+    classifications[generalist_mask] = "Generalist"
+
+    # --- Spezialisten Logik ---
+    spec_occ_mask = occurrence_frequencies <= 0.40
+    spec_abund_thresh = local_abundances.quantile(0.60)
+    spec_abund_mask = local_abundances >= spec_abund_thresh
+    specialist_mask = spec_occ_mask & spec_abund_mask
+    classifications[specialist_mask] = "Specialist"
+
+    # >>> HIER DIE PRINTS EINFÜGEN <<<
+    print(f"Generalists: {generalist_mask.sum()} ({generalist_mask.mean()*100:.1f}%)")
+    print(f"Specialists: {specialist_mask.sum()} ({specialist_mask.mean()*100:.1f}%)")
+    print(f"Unclassified: {n_taxa - generalist_mask.sum() - specialist_mask.sum()} ({(1 - generalist_mask.mean() - specialist_mask.mean())*100:.1f}%)")
+    # >>> ENDE <<<
+
+    return classifications, mean_rel_abundances, occurrence_frequencies
 
 def _annotate_niche(G, df_lookup, df_relative):
-    """Attach the lookup attributes plus a niche classification to each node."""
+    """
+    Attach the lookup attributes plus a niche classification to each node.
+    
+    Die Niche-Klassifizierung wird einmal für alle Taxa berechnet und dann
+    pro Node zugewiesen.
+    """
+
+    classifications, mean_rel_abundances, occurrence_frequencies = (
+        identify_generalists_or_specialists(df_relative)
+    )
+
+    if isinstance(classifications, np.ndarray):
+        classifications = pd.Series(classifications, index=df_relative.columns)
+    if isinstance(mean_rel_abundances, np.ndarray):
+        mean_rel_abundances = pd.Series(mean_rel_abundances, index=df_relative.columns)
+    if isinstance(occurrence_frequencies, np.ndarray):
+        occurrence_frequencies = pd.Series(occurrence_frequencies, index=df_relative.columns)
+    
     nodes_attr = dict(G.nodes)
     
     for node in G.nodes:
-        attributes = df_lookup.loc[node]
-        habitat_type = attributes["habitat"]
-
-        spec_or_gen, _, Bj = identify_generalists_or_specialists(
-            df_relative[node].to_numpy(),
-            habitat_type=habitat_type
-        )
+        attributes = df_lookup.loc[node].copy()
         
-        attributes.loc["generalist_or_specialists"] = (
+        spec_or_gen = classifications.get(node, None)
+        attributes["generalist_or_specialist"] = (
             spec_or_gen if spec_or_gen is not None else "None"
         )
         
-        attributes.loc["niche_breadth"] = Bj if Bj > 0 else np.nan
-        attributes.loc["mean_relative_abundance"] = df_relative[node].mean()
-        nodes_attr[node] = attributes
+        attributes["mean_relative_abundance"] = mean_rel_abundances.get(node, np.nan)
+        attributes["occurrence_frequency"] = occurrence_frequencies.get(node, np.nan)
         
+        nodes_attr[node] = attributes
+    
     nx.set_node_attributes(G, nodes_attr)
 
 def extract_niche_data(graphs, labels):
@@ -81,71 +130,34 @@ def extract_niche_data(graphs, labels):
     
     for G, label in zip(graphs, labels):
         for node, attrs in G.nodes(data=True):
-            bj = attrs.get("niche_breadth", np.nan)
             mean_ab = attrs.get("mean_relative_abundance", np.nan)
-            niche_class = attrs.get("generalist_or_specialists", "None")
+            occ_freq = attrs.get("occurrence_frequency", np.nan)
+            niche_class = attrs.get("generalist_or_specialist", "None")
             kingdom = attrs.get("kingdom", "Unknown")
 
-            if not np.isnan(bj) and not np.isnan(mean_ab) and mean_ab > 0:
+            if not np.isnan(mean_ab) and not np.isnan(occ_freq) and mean_ab > 0:
                 data.append({
                     "Habitat": label,
                     "Taxon": node,
                     "Kingdom": kingdom,
                     "Niche_Class": niche_class,
-                    "Niche_Breadth": bj,
+                    "Occurrence_Frequency": occ_freq,
+                    "Mean_Relative_Abundance": mean_ab,
                     "Log_Mean_Abundance": np.log10(mean_ab),
                 })
     
     return pd.DataFrame(data)
+from matplotlib.lines import Line2D
 
-def plot_niche_breadth_boxplot(
+def plot_occurrence_vs_abundance_grid(
     graphs,
     labels,
-    path="FigS2_niche_breadth_boxplot.png",
-    figsize=(8, 6),
-):   
-    df = extract_niche_data(graphs, labels)
-
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    box_data = [df[df["Habitat"] == label]["Niche_Breadth"].values for label in labels]
-    bp = ax.boxplot(box_data, tick_labels=labels, patch_artist=True, showmeans=True)
-    
-    colors = ['#1f77b4', '#ff7f0e'] 
-    for patch, color in zip(bp['boxes'], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-
-    ax.set_ylabel("Niche Breadth ($B_j$)", fontsize=12)
-    ax.set_title("Niche Breadth Distribution per Habitat", fontsize=14)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-    for label in labels:
-        if "Field" in label:
-            ax.axhline(y=27.5, color='blue', linestyle=':', alpha=0.5, label='FS Threshold Generalist (27.5)')
-            ax.axhline(y=1.5, color='blue', linestyle='-', alpha=0.5, label='FS Threshold Specialist (1.5)')
-
-        elif "Rhizo" in label:
-            ax.axhline(y=25, color='orange', linestyle=':', alpha=0.5, label='RH Threshold Generalist (25)')
-            ax.axhline(y=1.5, color='orange', linestyle='-', alpha=0.5, label='RH Threshold Specialist (1.5)')
-    
-    handles, labels_legend = ax.get_legend_handles_labels()
-    by_label = dict(zip(labels_legend, handles))
-    ax.legend(by_label.values(), by_label.keys(), loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=2, frameon=False)
-
-    plt.tight_layout()
-    plt.savefig(path, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Boxplot saved to {path}")
-    return path
-
-def plot_niche_breadth_vs_abundance_grid(
-    graphs,
-    labels,
-    path="FigS3_niche_breadth_vs_abundance.png",
+    path="FigS2_occurrence_vs_abundance.png",
     figsize=(14, 7),
 ):
+    """
+    Plots Occurrence Frequency vs. Mean Relative Abundance for each habitat.
+    """
     df = extract_niche_data(graphs, labels)
 
     fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
@@ -164,25 +176,26 @@ def plot_niche_breadth_vs_abundance_grid(
     }
 
     unique_kingdoms = df["Kingdom"].unique()
-    unique_classes = df["Niche_Class"].unique()
+    unique_classes = df["Niche_Class"].fillna("None").unique()
 
     for ax, label in zip(axes, labels):
         df_habitat = df[df["Habitat"] == label]
         
         for kingdom in unique_kingdoms:
             for niche_class in unique_classes:
+                niche_class_filter = "None" if niche_class is None else niche_class
                 subset = df_habitat[
                     (df_habitat["Kingdom"] == kingdom) & 
-                    (df_habitat["Niche_Class"] == niche_class)
+                    (df_habitat["Niche_Class"].fillna("None") == niche_class_filter)
                 ]
                 
                 if not subset.empty:
                     ax.scatter(
                         subset["Log_Mean_Abundance"],
-                        subset["Niche_Breadth"],
-                        c=color_map[niche_class],
+                        subset["Occurrence_Frequency"],  # ← Geändert von Niche_Breadth
+                        c=color_map.get(niche_class_filter, "#7f7f7f"),
                         marker=marker_map[kingdom],
-                        label=f"{kingdom} {niche_class}" if ax == axes[0] else "",
+                        label=f"{kingdom} {niche_class_filter}" if ax == axes[0] else "",
                         alpha=0.7,
                         edgecolors='black',
                         linewidth=0.5,
@@ -190,10 +203,11 @@ def plot_niche_breadth_vs_abundance_grid(
                     )
 
         ax.set_xlabel("Log10(Mean Relative Abundance)")
-        ax.set_ylabel("Niche Breadth ($B_j$)")
+        ax.set_ylabel("Occurrence Frequency")  # ← Geändert von Niche Breadth
         ax.set_title(label)
         ax.grid(True, linestyle='--', alpha=0.5)
 
+    # Legenden erstellen
     handles, labels_legend = axes[0].get_legend_handles_labels()
     
     legend_marker = []
@@ -206,8 +220,10 @@ def plot_niche_breadth_vs_abundance_grid(
     
     legend_color = []
     for n_class in unique_classes:
-        col = color_map.get(n_class, "gray")
-        label_text = "Unclassified" if n_class == "None" else n_class
+        # None-Objekt zu String konvertieren für sicheren Vergleich
+        n_class_str = str(n_class) if n_class is not None else "None"
+        col = color_map.get(n_class_str, "gray")
+        label_text = "Unclassified" if n_class_str == "None" else n_class_str
         legend_color.append(
             Line2D([0], [0], marker="o", color="w", markerfacecolor=col, 
                     markersize=10, label=label_text)
@@ -229,7 +245,10 @@ def plot_graphs_side_by_side_by_niche(
     node_size=50,
     edge_width=1.0,
 ):
-
+    """
+    Visualizes networks side-by-side with nodes colored by niche classification
+    (Generalist, Specialist, or Unclassified).
+    """
     fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
     if len(graphs) == 1:
         axes = [axes]
@@ -253,14 +272,15 @@ def plot_graphs_side_by_side_by_niche(
         colors_colored = []
         
         for n in G.nodes:
-            niche = G.nodes[n].get("generalist_or_specialists", "None")
+            # ← Geändert von "generalist_or_specialists" zu "generalist_or_specialist"
+            niche = G.nodes[n].get("generalist_or_specialist", "None")
             if niche == "None":
                 nodes_gray.append(n)
             else:
                 nodes_colored.append(n)
                 colors_colored.append(classification_colors.get(niche, "#7f7f7f"))
 
-        # Kanten zeichnen (wie gehabt)
+        # Kanten zeichnen
         for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
             edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
             if not edges:
@@ -274,7 +294,7 @@ def plot_graphs_side_by_side_by_niche(
         if nodes_gray:
             nx.draw_networkx_nodes(
                 G, pos, nodelist=nodes_gray, node_color="#7f7f7f",
-                node_size=node_size, alpha=0.2, ax=ax  # <--- Alpha 0.2
+                node_size=node_size, alpha=0.2, ax=ax
             )
 
         # 2. Bunte Knoten zeichnen (Deckend)
