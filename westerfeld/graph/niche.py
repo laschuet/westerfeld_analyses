@@ -3,26 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import networkx as nx
-from typing import Literal, Optional, Tuple
 
 from _utils import edge_kingdom_type
-
-# Niche-breadth thresholds (https://doi.org/10.1093/femsec/fiw174).
-# A taxon below the lower mean-relative-abundance cutoff is ignored; otherwise
-# Bj below the specialist threshold marks a specialist and Bj above the
-# generalist threshold marks a generalist.
-HABITAT_THRESHOLDS = {
-    "Field_Soil": {
-        "mean_rel_abundance": 2e-5,
-        "specialist": 1.5,
-        "generalist": 27.5,  
-    },
-    "Rhizosphere": {
-        "mean_rel_abundance": 2e-5,
-        "specialist": 1.5,
-        "generalist": 25.0, 
-    }
-}
 
 import pandas as pd
 import numpy as np
@@ -64,7 +46,6 @@ def identify_generalists_or_specialists(df_relative):
     classifications = pd.Series(None, index=df_relative.columns, dtype=object)
 
     # --- Generalisten Logik ---
-
     gen_occ_mask = occurrence_frequencies >= 0.60
     gen_abund_thresh = local_abundances.quantile(0.60)
     gen_abund_mask = local_abundances < gen_abund_thresh
