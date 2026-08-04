@@ -249,6 +249,7 @@ def taxa_bounds(result):
         "Occurrence Frequency": result.y[below_mask],
         "Prediction": "below",
         "Habitat": habitat_code,
+        "Kingdom": result.type_label,
     })
 
     df_above = pd.DataFrame({
@@ -257,6 +258,7 @@ def taxa_bounds(result):
         "Occurrence Frequency": result.y[above_mask],
         "Prediction": "above",
         "Habitat": habitat_code,
+        "Kingdom": result.type_label,
     })
 
     df_neutral = pd.DataFrame({
@@ -265,6 +267,7 @@ def taxa_bounds(result):
         "Occurrence Frequency": result.y[neutral_mask],
         "Prediction": "neutral",
         "Habitat": habitat_code,
+        "Kingdom": result.type_label,
     })
 
     df = pd.concat([df_below, df_above, df_neutral], ignore_index=True)

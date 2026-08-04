@@ -5,9 +5,92 @@ from matplotlib.lines import Line2D
 import networkx as nx
 
 from _utils import edge_kingdom_type
+from ncm import ncm, taxa_bounds
 
-import pandas as pd
-import numpy as np
+def identify_generalists_or_specialists_ncm():
+    """
+    Identifiziert Generalisten und Spezialisten basierend auf dem Neutral Community Model (NCM).
+
+    Für jedes combination von 'type_label' und 'habitat' wird ein eigenes NCM-Modell
+    und ein eigenes taxa_bounds(result) berechnet. Die Ergebnisse werden gesammelt.
+
+    Klassifizierung:
+        - 'above' → Generalist
+        - 'below' → Specialist
+        - 'neutral' → None (Unclassified)
+
+    Returns
+    -------
+    classifications : pd.Series
+        Klassifizierung pro Taxon: "Generalist", "Specialist" oder None.
+    mean_rel_abundances : pd.Series
+        Globale mittlere relative Abundanz pro Taxon (aus taxa_bounds).
+    occurrence_frequencies : pd.Series
+        Anteil der Samples, in denen das Taxon vorkommt (aus taxa_bounds).
+    """
+
+    type_labels = ["Fungi", "Bacteria"] 
+    habitats = ["Field_Soil", "Rhizosphere"]
+    taxonomy = "Genus"
+    crops = ["Winter wheat 1", "Winter wheat 2"]
+    years = 2019
+
+    all_results_nested = {}
+    all_taxa_dfs = []
+
+    for type_label in type_labels:
+        results = []
+        taxa_dfs = []
+
+        for habitat in habitats:
+            result = ncm(
+                type_label,
+                habitat,
+                taxonomy,
+                years=years,
+                habitats=[habitat],
+                crops=crops,
+            )
+            results.append(result)
+            print(f"  → Habitat: {habitat} → result created")
+
+            df_taxa = taxa_bounds(result)
+            taxa_dfs.append(df_taxa)
+            print(f"  → Habitat: {habitat} → taxa_bounds created")
+
+        all_results_nested[type_label] = results
+        all_taxa_dfs.extend(taxa_dfs)  
+
+    bounds_df = pd.concat(all_taxa_dfs, ignore_index=True)
+
+    habitat_mapping = {
+        "FS": "Field_Soil",
+        "RH": "Rhizosphere",
+    }
+    bounds_df["Habitat"] = bounds_df["Habitat"].replace(habitat_mapping)
+
+    bounds_df["Taxa"] = bounds_df["Kingdom"].astype(str) + ":" + bounds_df["Taxa"].astype(str)
+
+    mapping = {
+        "above": "Generalist",
+        "below": "Specialist",
+        "neutral": None
+    }
+
+    classifications = bounds_df.set_index("Taxa")["Prediction"].map(mapping)
+    mean_rel_abundances = bounds_df.set_index("Taxa")["Mean Relative Abundance"]
+    occurrence_frequencies = bounds_df.set_index("Taxa")["Occurrence Frequency"]
+
+    total = len(classifications)
+    n_gen = (classifications == "Generalist").sum()
+    n_spec = (classifications == "Specialist").sum()
+    n_unc = total - n_gen - n_spec
+
+    print(f"✅ Generalists: {n_gen} ({n_gen/total*100:.1f}%)")
+    print(f"✅ Specialists: {n_spec} ({n_spec/total*100:.1f}%)")
+    print(f"✅ Unclassified: {n_unc} ({n_unc/total*100:.1f}%)")
+
+    return classifications, mean_rel_abundances, occurrence_frequencies
 
 def identify_generalists_or_specialists(df_relative):
     """
@@ -59,11 +142,9 @@ def identify_generalists_or_specialists(df_relative):
     specialist_mask = spec_occ_mask & spec_abund_mask
     classifications[specialist_mask] = "Specialist"
 
-    # >>> HIER DIE PRINTS EINFÜGEN <<<
     print(f"Generalists: {generalist_mask.sum()} ({generalist_mask.mean()*100:.1f}%)")
     print(f"Specialists: {specialist_mask.sum()} ({specialist_mask.mean()*100:.1f}%)")
     print(f"Unclassified: {n_taxa - generalist_mask.sum() - specialist_mask.sum()} ({(1 - generalist_mask.mean() - specialist_mask.mean())*100:.1f}%)")
-    # >>> ENDE <<<
 
     return classifications, mean_rel_abundances, occurrence_frequencies
 
@@ -71,36 +152,56 @@ def _annotate_niche(G, df_lookup, df_relative):
     """
     Attach the lookup attributes plus a niche classification to each node.
     
-    Die Niche-Klassifizierung wird einmal für alle Taxa berechnet und dann
-    pro Node zugewiesen.
+    Die Knotennamen bleiben unverändert (z. B. 'Fungi:Absidia').
+    Die Taxa-Namen in bounds_df werden aus 'Kingdom' und 'Taxa' zusammengesetzt: 'Kingdom:Taxa'
+    um sie mit df_relative.columns zu vergleichen.
     """
 
     classifications, mean_rel_abundances, occurrence_frequencies = (
-        identify_generalists_or_specialists(df_relative)
+        identify_generalists_or_specialists_ncm()
     )
 
+    # --- 2. Sicherstellen, dass alle Rückgabewerte als Series vorliegen ---
     if isinstance(classifications, np.ndarray):
         classifications = pd.Series(classifications, index=df_relative.columns)
     if isinstance(mean_rel_abundances, np.ndarray):
         mean_rel_abundances = pd.Series(mean_rel_abundances, index=df_relative.columns)
     if isinstance(occurrence_frequencies, np.ndarray):
         occurrence_frequencies = pd.Series(occurrence_frequencies, index=df_relative.columns)
-    
+
+
+    taxa_in_df = set(df_relative.columns)
     nodes_attr = dict(G.nodes)
-    
+
     for node in G.nodes:
-        attributes = df_lookup.loc[node].copy()
-        
-        spec_or_gen = classifications.get(node, None)
+        node_str = str(node)  
+
+        if node_str in taxa_in_df:
+            spec_or_gen = classifications.get(node_str, None)
+            mean_ab = mean_rel_abundances.get(node_str)
+            occ_freq = occurrence_frequencies.get(node_str)
+
+            if isinstance(mean_ab, pd.Series):
+                mean_ab = mean_ab.iloc[0]
+            if isinstance(occ_freq, pd.Series):
+                occ_freq = occ_freq.iloc[0]
+        else:
+            # ❌ Kein Match → setze np.nan
+            print(f"❌ Node '{node_str}' ist nicht in df_relative.columns!")
+            spec_or_gen = "None"
+            mean_ab = np.nan
+            occ_freq = np.nan
+
+
+        attributes = df_lookup.loc[node_str].copy()
         attributes["generalist_or_specialist"] = (
             spec_or_gen if spec_or_gen is not None else "None"
         )
-        
-        attributes["mean_relative_abundance"] = mean_rel_abundances.get(node, np.nan)
-        attributes["occurrence_frequency"] = occurrence_frequencies.get(node, np.nan)
-        
+        attributes["mean_relative_abundance"] = mean_ab
+        attributes["occurrence_frequency"] = occ_freq
+
         nodes_attr[node] = attributes
-    
+
     nx.set_node_attributes(G, nodes_attr)
 
 def extract_niche_data(graphs, labels):
@@ -126,9 +227,18 @@ def extract_niche_data(graphs, labels):
                     "Mean_Relative_Abundance": mean_ab,
                     "Log_Mean_Abundance": np.log10(mean_ab),
                 })
+
+    df = pd.DataFrame(data)
+    # DEBUG: Prüfe, ob Daten vorhanden sind
+    if df.empty:
+        print("⚠️ WARNUNG: extract_niche_data gab ein leeres DataFrame zurück!")
+        print(f"  Anzahl der Graphen: {len(graphs)}")
+        print(f"  Anzahl der Labels: {len(labels)}")
+        print(f"  Anzahl der Nodes in allen Graphen: {sum(len(G.nodes) for G in graphs)}")
+        print(f"  Anzahl der Nodes mit gültigen Daten: {len(data)}")
+        print(f"  Spalten: {list(df.columns) if not df.empty else 'keine'}")
     
-    return pd.DataFrame(data)
-from matplotlib.lines import Line2D
+    return df
 
 def plot_occurrence_vs_abundance_grid(
     graphs,
@@ -157,26 +267,35 @@ def plot_occurrence_vs_abundance_grid(
     }
 
     unique_kingdoms = df["Kingdom"].unique()
-    unique_classes = df["Niche_Class"].fillna("None").unique()
+
+    niche_values = df["Niche_Class"].dropna()
+    unique_classes = set()
+    for val in niche_values:
+        if isinstance(val, pd.Series):
+            val = val.iloc[0]  # Extrahiere Skalar
+        unique_classes.add(str(val) if val is not None else "None")
 
     for ax, label in zip(axes, labels):
         df_habitat = df[df["Habitat"] == label]
         
         for kingdom in unique_kingdoms:
             for niche_class in unique_classes:
-                niche_class_filter = "None" if niche_class is None else niche_class
+                # ✅ Konvertiere niche_class zu String
+                niche_class_str = str(niche_class) if niche_class is not None else "None"
+                
+                # ✅ Extrahiere Skalar aus jeder Zeile in df_habitat["Niche_Class"]
                 subset = df_habitat[
                     (df_habitat["Kingdom"] == kingdom) & 
-                    (df_habitat["Niche_Class"].fillna("None") == niche_class_filter)
+                    (df_habitat["Niche_Class"].apply(lambda x: str(x.iloc[0]) if isinstance(x, pd.Series) else str(x) if x is not None else "None") == niche_class_str)
                 ]
                 
                 if not subset.empty:
                     ax.scatter(
                         subset["Log_Mean_Abundance"],
                         subset["Occurrence_Frequency"],  # ← Geändert von Niche_Breadth
-                        c=color_map.get(niche_class_filter, "#7f7f7f"),
+                        c=color_map.get(niche_class_str, "#7f7f7f"),
                         marker=marker_map[kingdom],
-                        label=f"{kingdom} {niche_class_filter}" if ax == axes[0] else "",
+                        label=f"{kingdom} {niche_class_str}" if ax == axes[0] else "",
                         alpha=0.7,
                         edgecolors='black',
                         linewidth=0.5,
@@ -255,7 +374,11 @@ def plot_graphs_side_by_side_by_niche(
         for n in G.nodes:
             # ← Geändert von "generalist_or_specialists" zu "generalist_or_specialist"
             niche = G.nodes[n].get("generalist_or_specialist", "None")
-            if niche == "None":
+            if isinstance(niche, pd.Series):
+                niche = niche.iloc[0]
+
+            niche_str = str(niche) if niche is not None else "None"
+            if niche_str == "None":
                 nodes_gray.append(n)
             else:
                 nodes_colored.append(n)
