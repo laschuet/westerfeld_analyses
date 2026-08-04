@@ -90,6 +90,36 @@ def identify_generalists_or_specialists_ncm():
     print(f"✅ Specialists: {n_spec} ({n_spec/total*100:.1f}%)")
     print(f"✅ Unclassified: {n_unc} ({n_unc/total*100:.1f}%)")
 
+     # --- 9. Statistik pro Habitat ausgeben ---
+    print("\n" + "-"*60)
+    print("📊 Klassifizierung pro Habitat")
+    print("-"*60)
+
+    # ✅ Gruppiere nach Habitat
+    habitat_stats = bounds_df.groupby("Habitat").apply(
+        lambda x: pd.Series({
+            "Total": len(x),
+            "Generalist": (x["Prediction"] == "above").sum(),
+            "Specialist": (x["Prediction"] == "below").sum(),
+            "Unclassified": (x["Prediction"] == "neutral").sum()
+        })
+    ).round(1)
+
+    # ✅ Prozentwerte berechnen
+    habitat_stats["Generalist_%"] = (habitat_stats["Generalist"] / habitat_stats["Total"]) * 100
+    habitat_stats["Specialist_%"] = (habitat_stats["Specialist"] / habitat_stats["Total"]) * 100
+    habitat_stats["Unclassified_%"] = (habitat_stats["Unclassified"] / habitat_stats["Total"]) * 100
+
+    # ✅ Ausgabe
+    for habitat, row in habitat_stats.iterrows():
+        print(f"📍 Habitat: {habitat}")
+        print(f"  ✅ Gesamt: {row['Total']}")
+        print(f"  ✅ Generalisten: {row['Generalist']} ({row['Generalist_%']:.1f}%)")
+        print(f"  ✅ Spezialisten: {row['Specialist']} ({row['Specialist_%']:.1f}%)")
+        print(f"  ✅ Unklassifiziert: {row['Unclassified']} ({row['Unclassified_%']:.1f}%)")
+
+    print("-"*60)
+
     return classifications, mean_rel_abundances, occurrence_frequencies
 
 def identify_generalists_or_specialists(df_relative):
