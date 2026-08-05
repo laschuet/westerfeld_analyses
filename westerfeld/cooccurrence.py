@@ -25,6 +25,8 @@ from graph.creation import (
 from graph.niche import (
     plot_graphs_side_by_side_by_niche,
     plot_occurrence_vs_abundance_grid,
+    plot_graphs_side_by_side_by_niche_filtered,
+    plot_diff_grid_by_niche,
     analyze_niche,
     plot_degree_change,
     plot_consistent_degree_change_comparison,
@@ -278,10 +280,12 @@ def main():
     plot_diff_grid(graphs, labels)
     plot_common_only_detailed(graphs, labels)
     plot_graphs_side_by_side_by_niche(graphs, labels)
+    plot_graphs_side_by_side_by_niche_filtered(graphs, labels)
 
     # Plots niche
     #df_overlap, df_change = analyze_niche(graphs, labels)
     plot_occurrence_vs_abundance_grid(graphs, labels)
+    plot_diff_grid_by_niche(graphs, labels)
     #plot_degree_change(df_change)
     #plot_consistent_degree_change_comparison(df_change, df_overlap, labels)
 
