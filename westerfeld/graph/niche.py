@@ -883,6 +883,119 @@ def plot_degree_shift_scatter(
     print(f"Degree Shift Scatterplot saved to {path}")
     return path
 
+def plot_degree_shift_scatter_labeled(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "Fig5_degree_shift_labeled.png",
+    figsize: tuple[float, float] = (12, 10), # Etwas größer für die Labels
+):
+    """
+    Scatterplot comparing Degree between habitats for Generalists and Specialists only.
+    Includes Taxa labels for direct identification.
+    """
+    if len(graphs) != 2:
+        raise ValueError("Exactly 2 graphs are required.")
+
+    G1, G2 = graphs[0], graphs[1]
+    
+    # Gemeinsame Knoten finden
+    common_nodes = set(G1.nodes()).intersection(set(G2.nodes()))
+    
+    if not common_nodes:
+        print("Keine gemeinsamen Knoten gefunden.")
+        return
+
+    # Daten sammeln
+    data = []
+    for n in common_nodes:
+        # Nische prüfen
+        niche = G1.nodes[n].get("generalist_or_specialist", "None")
+        if isinstance(niche, pd.Series): niche = niche.iloc[0]
+        niche_str = str(niche) if niche is not None else "None"
+        
+        # Nur Generalisten und Spezialisten behalten
+        if niche_str not in ["Generalist", "Specialist"]:
+            continue
+            
+        # Degree
+        deg1 = G1.degree(n)
+        deg2 = G2.degree(n)
+        
+        # Taxonomie (für Marker)
+        tax_color = _node_color(G1, n)
+        marker = '^' if tax_color == "#2E8B57" else 'o' # Dreieck für Pilz, Kreis für Bakterium
+        
+        # Farbe für Plot
+        color = "blue" if niche_str == "Generalist" else "red"
+        
+        # Taxon Name (Annahme: Der Knoten-Name 'n' ist der Taxon-Name)
+        taxon_name = str(n) 
+
+        data.append({
+            "x": deg1,
+            "y": deg2,
+            "color": color,
+            "marker": marker,
+            "niche": niche_str,
+            "taxon": taxon_name
+        })
+
+    if not data:
+        print("Keine Generalisten oder Spezialisten in beiden Graphen gefunden.")
+        return
+
+    # Plot erstellen
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Diagonale Linie zeichnen
+    max_deg = max([max(d['x'], d['y']) for d in data])
+    ax.plot([0, max_deg + 1], [0, max_deg + 1], 'k--', alpha=0.3, label="No Change (x=y)")
+
+    # Punkte plotten
+    for d in data:
+        ax.scatter(d["x"], d["y"], 
+                   c=d["color"], 
+                   marker=d["marker"], 
+                   s=100, # Etwas größere Punkte für die Labels
+                   edgecolors='black', linewidth=0.8, zorder=2)
+        
+        # Label hinzufügen
+        # Offset berechnen, damit Labels sich nicht überlappen (einfache Heuristik)
+        offset_x = 0.2
+        offset_y = 0.2
+        
+        ax.annotate(d["taxon"], 
+                    (d["x"], d["y"]), 
+                    xytext=(offset_x, offset_y), 
+                    textcoords='offset points',
+                    fontsize=9, 
+                    alpha=0.8,
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none", alpha=0.7))
+
+    # Achsen und Titel
+    ax.set_xlabel(f"Degree in {labels[0]}")
+    ax.set_ylabel(f"Degree in {labels[1]}")
+    ax.set_title("Degree Shift of Generalists & Specialists (Common Taxa)")
+    
+    # Legende manuell erstellen (für saubere Darstellung)
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Bacteria', markerfacecolor='gray', markersize=10, markeredgecolor='black'),
+        Line2D([0], [0], marker='^', color='w', label='Fungi', markerfacecolor='gray', markersize=10, markeredgecolor='black'),
+        Line2D([0], [0], marker='o', color='w', label='Generalist', markerfacecolor='blue', markersize=10, markeredgecolor='black'),
+        Line2D([0], [0], marker='o', color='w', label='Specialist', markerfacecolor='red', markersize=10, markeredgecolor='black'),
+    ]
+    ax.legend(handles=legend_elements, loc="upper left")
+    
+    ax.grid(True, linestyle=':', alpha=0.6)
+    
+    plt.tight_layout()
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Labeled Degree Shift Scatterplot saved to {path}")
+    return path
+
 def analyze_niche(graphs, labels):
     """
     1. Analyzes the overlap of generalists and specialists between two habitats.

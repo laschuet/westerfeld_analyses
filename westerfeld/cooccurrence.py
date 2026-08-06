@@ -28,6 +28,7 @@ from graph.niche import (
     plot_niche_consistency,
     plot_niche_stability_and_degree_change,
     plot_degree_shift_scatter,
+    plot_degree_shift_scatter_labeled,
     analyze_niche,
 )
 
@@ -285,7 +286,7 @@ def main():
     plot_niche_grid(graphs, labels)
     plot_niche_consistency(graphs, labels)
     plot_niche_stability_and_degree_change(graphs, labels)
-    plot_degree_shift_scatter(graphs, labels)
+    plot_degree_shift_scatter_labeled(graphs, labels)
 
     # Excel exports 
     export_common_edges_to_excel("common_edges_list.xlsx", graphs, labels)
