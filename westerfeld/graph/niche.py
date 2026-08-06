@@ -6,7 +6,7 @@ import networkx as nx
 
 from _utils import edge_kingdom_type
 from ncm import ncm, taxa_bounds
-from graph.comparison import _edge_color
+from graph.comparison import _edge_color, _node_color
 
 def identify_generalists_or_specialists_ncm():
     """
@@ -368,241 +368,33 @@ def plot_occurrence_vs_abundance_grid(
     plt.close()
     return path
 
-def plot_graphs_side_by_side_by_niche(
-    graphs,
-    labels,
-    path="Fig6_graph_side_by_side_niche.png",
-    figsize=(14, 7),
-    node_size=50,
-    edge_width=1.0,
-):
-    """
-    Visualizes networks side-by-side with nodes colored by niche classification
-    (Generalist, Specialist, or Unclassified).
-    """
-    fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
-    if len(graphs) == 1:
-        axes = [axes]
-
-    classification_colors = {
-        "Generalist": "#2422b8",
-        "Specialist": "#d62728",
-        "None": "#7f7f7f",
-    }
-
-    for ax, G, label in zip(axes, graphs, labels):
-        if G.number_of_nodes() == 0:
-            ax.set_axis_off()
-            continue
-
-        pos = nx.spring_layout(G, seed=42)
-        
-        # Knoten in zwei Listen aufteilen
-        nodes_colored = []
-        nodes_gray = []
-        colors_colored = []
-        
-        for n in G.nodes:
-            # ← Geändert von "generalist_or_specialists" zu "generalist_or_specialist"
-            niche = G.nodes[n].get("generalist_or_specialist", "None")
-            if isinstance(niche, pd.Series):
-                niche = niche.iloc[0]
-
-            niche_str = str(niche) if niche is not None else "None"
-            if niche_str == "None":
-                nodes_gray.append(n)
-            else:
-                nodes_colored.append(n)
-                colors_colored.append(classification_colors.get(niche, "#7f7f7f"))
-
-        # Kanten zeichnen
-        for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
-            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
-            if not edges:
-                continue
-            nx.draw_networkx_edges(
-                G, pos, edgelist=edges, edge_color="#999999",
-                width=edge_width, alpha=0.6, ax=ax,
-            )
-
-        # 1. Graue Knoten zeichnen (Transparent)
-        if nodes_gray:
-            nx.draw_networkx_nodes(
-                G, pos, nodelist=nodes_gray, node_color="#7f7f7f",
-                node_size=node_size, alpha=0.2, ax=ax
-            )
-
-        # 2. Bunte Knoten zeichnen (Deckend)
-        if nodes_colored:
-            nx.draw_networkx_nodes(
-                G, pos, nodelist=nodes_colored, node_color=colors_colored,
-                node_size=node_size, alpha=1.0, 
-                edgecolors="#454545", linewidths=0.5,
-                ax=ax
-            )
-
-        ax.set_title(label)
-        ax.set_axis_on()
-        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-
-    legend_handles = [
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=color, markersize=10, label=label)
-        for label, color in (
-            ("Generalist", classification_colors["Generalist"]),
-            ("Specialist", classification_colors["Specialist"]),
-            ("Unclassified", classification_colors["None"]),
-        )
-    ]
-    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    return path
-
-def plot_graphs_side_by_side_by_niche_filtered(
-    graphs,
-    labels,
-    path="Fig6_graph_side_by_side_niche_filtered.png",
-    figsize=(14, 7),
-    node_size=50,
-    edge_width=1.0,
-):
-    """
-    Visualisiert Netzwerke side-by-side, wobei nur Knoten gezeigt werden,
-    die entweder Generalisten/Spezialisten sind oder mit diesen verbunden sind.
-    Isolierte graue Knoten (ohne Verbindung zu den Hauptakteuren) werden entfernt.
-    """
-    fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
-    if len(graphs) == 1:
-        axes = [axes]
-
-    classification_colors = {
-        "Generalist": "#2422b8",
-        "Specialist": "#d62728",
-        "None": "#7f7f7f",
-    }
-
-    for ax, G, label in zip(axes, graphs, labels):
-        if G.number_of_nodes() == 0:
-            ax.set_axis_off()
-            continue
-
-        # --- NEU: Filterung des Graphen ---
-        # 1. Identifiziere alle "wichtigen" Knoten (Generalisten oder Spezialisten)
-        important_nodes = set()
-        for n in G.nodes:
-            niche = G.nodes[n].get("generalist_or_specialist", "None")
-            if isinstance(niche, pd.Series):
-                niche = niche.iloc[0]
-            
-            niche_str = str(niche) if niche is not None else "None"
-            if niche_str in ["Generalist", "Specialist"]:
-                important_nodes.add(n)
-
-        # 2. Finde alle Nachbarn dieser wichtigen Knoten (1-Hop Nachbarschaft)
-        neighbors = set()
-        for node in important_nodes:
-            neighbors.update(G.neighbors(node))
-        
-        # 3. Definiere die Knotenmenge für den neuen Subgraphen
-        nodes_to_keep = important_nodes.union(neighbors)
-        
-        # 4. Erstelle den Subgraphen
-        G_filtered = G.subgraph(nodes_to_keep).copy()
-        # ----------------------------------
-
-        # Layout berechnen (nur für den gefilterten Graphen)
-        pos = nx.spring_layout(G_filtered, seed=42)
-        
-        # Knoten in Listen aufteilen
-        nodes_colored = []
-        nodes_gray = []
-        colors_colored = []
-        
-        for n in G_filtered.nodes:
-            niche = G_filtered.nodes[n].get("generalist_or_specialist", "None")
-            if isinstance(niche, pd.Series):
-                niche = niche.iloc[0]
-
-            niche_str = str(niche) if niche is not None else "None"
-            if niche_str == "None":
-                nodes_gray.append(n)
-            else:
-                nodes_colored.append(n)
-                colors_colored.append(classification_colors.get(niche, "#7f7f7f"))
-
-        # Kanten zeichnen
-        # Wir nutzen hier G_filtered für die Kanten
-        for edge_type in sorted({edge_kingdom_type(G_filtered, u, v) for u, v in G_filtered.edges()}):
-            edges = [e for e in G_filtered.edges() if edge_kingdom_type(G_filtered, e[0], e[1]) == edge_type]
-            if not edges:
-                continue
-            nx.draw_networkx_edges(
-                G_filtered, pos, edgelist=edges, edge_color="#999999",
-                width=edge_width, alpha=0.6, ax=ax,
-            )
-
-        # 1. Graue Knoten zeichnen (Nachbarn ohne Klassifizierung)
-        if nodes_gray:
-            nx.draw_networkx_nodes(
-                G_filtered, pos, nodelist=nodes_gray, node_color="#7f7f7f",
-                node_size=node_size, alpha=0.2, ax=ax
-            )
-
-        # 2. Bunte Knoten zeichnen (Generalisten/Spezialisten)
-        if nodes_colored:
-            nx.draw_networkx_nodes(
-                G_filtered, pos, nodelist=nodes_colored, node_color=colors_colored,
-                node_size=node_size, alpha=1.0, 
-                edgecolors="#454545", linewidths=0.5,
-                ax=ax
-            )
-
-        ax.set_title(label)
-        ax.set_axis_on()
-        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-
-    legend_handles = [
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=color, markersize=10, label=label)
-        for label, color in (
-            ("Generalist", classification_colors["Generalist"]),
-            ("Specialist", classification_colors["Specialist"]),
-            ("Unclassified", classification_colors["None"]),
-        )
-    ]
-    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    return path
-
-def plot_diff_grid_by_niche(
+def plot_niche_grid(
     graphs: list[nx.Graph],
     labels: list[str],
-    path: str = "Fig6_diff_grid_by_niche.png",
-    figsize: tuple[float, float] = (16, 12),
-    node_size: int = 25,
+    path: str = "Fig6_niche_analysis.png",
+    figsize: tuple[float, float] = (16, 10),
+    node_size: int = 25, # Etwas größer, damit die Ränder gut sichtbar sind
     edge_width: float = 0.75,
 ):
     """
-    Erstellt ein 3x2 Grid-Vergleichsplot für zwei Netzwerke, 
-    gefiltert nach Niche-Klassifizierung.
+    Erstellt ein 2x2 Grid-Vergleichsplot für zwei Netzwerke.
+    Zeile 1: Alle Knoten und Kanten.
+    Zeile 2: Nur Generalisten, Spezialisten und deren Nachbarn.
+    
+    Design:
+    - Füllfarbe: Taxonomie (Pilz vs Bakterium)
+    - Umrandung: Nische (Generalist=Blau/Dick, Specialist=Rot/Dick, Rest=Grau/Dünn)
     """
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs are required.")
 
-    fig, axes = plt.subplots(3, 2, figsize=figsize)
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
     
     edges_g1 = set(graphs[0].edges())
     edges_g2 = set(graphs[1].edges())
     
-    common_edges = edges_g1.intersection(edges_g2)
-    unique_g1 = edges_g1 - edges_g2
-    unique_g2 = edges_g2 - edges_g1
-
-    # Hilfsfunktion: Filtert den Graphen basierend auf Niche und Kanten-Subset
-    def get_filtered_graph(G_original, edges_subset):
-        # 1. Identifiziere wichtige Knoten (Generalisten/Spezialisten) IM VOLLSTÄNDIGEN GRAPHEN
+    def get_filtered_graph(G_original, edges_subset, focus_mode=False):
+        """Filtert den Graphen wie gehabt."""
         important_nodes = set()
         for n in G_original.nodes:
             niche = G_original.nodes[n].get("generalist_or_specialist", "None")
@@ -612,53 +404,37 @@ def plot_diff_grid_by_niche(
             if niche_str in ["Generalist", "Specialist"]:
                 important_nodes.add(n)
         
-        # 2. Finde alle Nachbarn dieser wichtigen Knoten (ebenfalls im vollen Graphen)
-        neighbors = set()
-        for node in important_nodes:
-            if node in G_original:
-                neighbors.update(G_original.neighbors(node))
-        
-        # 3. Menge der Knoten, die wir im Plot behalten wollen
-        # (Wichtige Knoten + Alle ihre Nachbarn)
-        nodes_to_keep = important_nodes.union(neighbors)
-        
-        # 4. Erstelle den Subgraphen basierend auf den zu behaltenden Knoten
-        # Wir nehmen erstmal ALLE Kanten zwischen diesen Knoten aus dem vollen Graphen
+        if focus_mode:
+            neighbors = set()
+            for node in important_nodes:
+                if node in G_original:
+                    neighbors.update(G_original.neighbors(node))
+            nodes_to_keep = important_nodes.union(neighbors)
+        else:
+            nodes_in_edges = set()
+            for u, v in edges_subset:
+                nodes_in_edges.add(u)
+                nodes_in_edges.add(v)
+            nodes_to_keep = nodes_in_edges
+
         G_nodes_filtered = G_original.subgraph(nodes_to_keep).copy()
-        
-        # 5. Jetzt filtern wir die Kanten basierend auf dem edges_subset (z.B. nur Unique)
         edges_to_draw = [e for e in G_nodes_filtered.edges() if e in edges_subset]
-        
-        # Erstelle den finalen Graphen nur mit diesen Kanten
         G_final = G_nodes_filtered.edge_subgraph(edges_to_draw).copy()
         
         return G_final
 
-    # Layout für Common Edges berechnen (Union beider Graphen für Konsistenz)
-    G_common_filtered_g1 = get_filtered_graph(graphs[0], common_edges)
-    G_common_filtered_g2 = get_filtered_graph(graphs[1], common_edges)
-    G_union_for_layout = nx.compose(G_common_filtered_g1, G_common_filtered_g2)
-    
-    if G_union_for_layout.number_of_nodes() > 0:
-        pos_common = nx.spring_layout(G_union_for_layout, seed=42, k=0.3)
-    else:
-        pos_common = {}
-
-    def draw_subplot(ax, G, edges_to_draw, title, use_fixed_pos=None):
+    def draw_subplot(ax, G, edges_subset, title, focus_mode=False, use_fixed_pos=None):
         ax.set_title(title)
         
-        # Filterung anwenden
-        G_filtered = get_filtered_graph(G, edges_to_draw)
+        G_filtered = get_filtered_graph(G, edges_subset, focus_mode=focus_mode)
         
         if G_filtered.number_of_nodes() == 0:
             ax.text(0.5, 0.5, "No data", ha='center', va='center', transform=ax.transAxes)
             ax.set_axis_off()
             return
 
-        # Layout bestimmen
         current_pos = use_fixed_pos if use_fixed_pos is not None else nx.spring_layout(G_filtered, seed=42, k=0.3)
         
-        # Sicherheits-Check für fixed_pos
         if use_fixed_pos is not None:
             current_pos = {k: v for k, v in use_fixed_pos.items() if k in G_filtered}
 
@@ -671,87 +447,440 @@ def plot_diff_grid_by_niche(
                 width=edge_width, alpha=0.3, ax=ax
             )
 
-        # Knoten zeichnen - WICHTIG: Hier strikt nach Attribut einfärben
-        nodes_generalist = []
-        nodes_specialist = []
-        nodes_gray = []
+        # Knoten vorbereiten
+        # Wir listen alle Knoten auf und sammeln ihre Eigenschaften
+        node_list = list(G_filtered.nodes())
+        face_colors = []   # Taxonomie (Pilz/Bakterie)
+        edge_colors = []   # Nische (Gen/Spec)
+        linewidths = []    # Dicke des Randes
         
-        for n in G_filtered.nodes:
-            # Wir holen das Attribut direkt aus dem Graphen
-            niche = G_filtered.nodes[n].get("generalist_or_specialist", "None")
+        for n in node_list:
+            # 1. Füllfarbe (Taxonomie)
+            face_colors.append(_node_color(G_filtered, n))
             
-            # Umgang mit pd.Series falls vorhanden
+            # 2. Nische für Rand
+            niche = G_filtered.nodes[n].get("generalist_or_specialist", "None")
             if isinstance(niche, pd.Series):
                 niche = niche.iloc[0]
-            
-            # String-Konvertierung und Vergleich
             niche_str = str(niche) if niche is not None else "None"
             
             if niche_str == "Generalist":
-                nodes_generalist.append(n)
+                edge_colors.append("blue")
+                linewidths.append(2.0) # Dick
             elif niche_str == "Specialist":
-                nodes_specialist.append(n)
+                edge_colors.append("red")
+                linewidths.append(2.0) # Dick
             else:
-                # Alles andere (None, "Unclassified", "None", etc.) ist grau
-                nodes_gray.append(n)
+                edge_colors.append("#454545") # Grau
+                linewidths.append(0.5) # Dünn
 
-        # Graue Knoten zeichnen (Unclassified)
-        if nodes_gray:
-            nx.draw_networkx_nodes(
-                G_filtered, current_pos, nodelist=nodes_gray, node_color="#7f7f7f",
-                node_size=node_size, alpha=0.2, ax=ax
-            )
-
-        # Generalisten zeichnen (Blau)
-        if nodes_generalist:
-            nx.draw_networkx_nodes(
-                G_filtered, current_pos, nodelist=nodes_generalist, node_color="#2422b8",
-                node_size=node_size, alpha=1.0, 
-                edgecolors="#454545", linewidths=0.5,
-                ax=ax
-            )
-            
-        # Spezialisten zeichnen (Rot)
-        if nodes_specialist:
-            nx.draw_networkx_nodes(
-                G_filtered, current_pos, nodelist=nodes_specialist, node_color="#d62728",
-                node_size=node_size, alpha=1.0, 
-                edgecolors="#454545", linewidths=0.5,
-                ax=ax
-            )
+        # Einmaliges Zeichnen aller Knoten mit Listen von Eigenschaften
+        nx.draw_networkx_nodes(
+            G_filtered, current_pos, nodelist=node_list,
+            node_color=face_colors,
+            edgecolors=edge_colors,
+            linewidths=linewidths,
+            node_size=node_size, 
+            ax=ax
+        )
         
         ax.set_title(f"{title}\n({G_filtered.number_of_nodes()} Nodes, {G_filtered.number_of_edges()} Edges)")
         ax.set_axis_off()
 
-    # Zeile 1: All edges
-    draw_subplot(axes[0, 0], graphs[0], edges_g1, f"{labels[0]} - All Edges (Niche View)")
-    draw_subplot(axes[0, 1], graphs[1], edges_g2, f"{labels[1]} - All Edges (Niche View)")
+    # --- Zeile 1: Alle Kanten ---
+    draw_subplot(axes[0, 0], graphs[0], edges_g1, f"{labels[0]} - All Nodes & Edges", focus_mode=False)
+    draw_subplot(axes[0, 1], graphs[1], edges_g2, f"{labels[1]} - All Nodes & Edges", focus_mode=False)
 
-    # Zeile 2: Unique edges
-    draw_subplot(axes[1, 0], graphs[0], unique_g1, f"{labels[0]} - Unique Edges (Niche View)")
-    draw_subplot(axes[1, 1], graphs[1], unique_g2, f"{labels[1]} - Unique Edges (Niche View)")
+    # --- Zeile 2: Nische Focus ---
+    draw_subplot(axes[1, 0], graphs[0], edges_g1, f"{labels[0]} - Niche Focus (Gen & Spec)", focus_mode=True)
+    draw_subplot(axes[1, 1], graphs[1], edges_g2, f"{labels[1]} - Niche Focus (Gen & Spec)", focus_mode=True)
 
-    # Zeile 3: Common edges
-    draw_subplot(axes[2, 0], graphs[0], common_edges, f"{labels[0]} - Common Edges (Niche View)", use_fixed_pos=pos_common)
-    draw_subplot(axes[2, 1], graphs[1], common_edges, f"{labels[1]} - Common Edges (Niche View)", use_fixed_pos=pos_common)
-
-    # Legende
+    # Legende anpassen
     legend_handles = [
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#2422b8", markersize=10, label="Generalist", markeredgecolor="#454545", markeredgewidth=0.5),
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#d62728", markersize=10, label="Specialist", markeredgecolor="#454545", markeredgewidth=0.5),
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#7f7f7f", markersize=10, label="Unclassified", alpha=0.2, markeredgecolor="#454545", markeredgewidth=0.5),
+        # Taxonomie (Füllfarbe)
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#2E8B57", markersize=10, label="Fungi", markeredgecolor="#454545", markeredgewidth=0.5),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#81BADB", markersize=10, label="Bacteria", markeredgecolor="#454545", markeredgewidth=0.5),
         plt.Line2D([], [], color="none", label=""), 
+        # Nische (Umrandung) - Dummy-Kreise zur Demonstration der Ränder
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#CCCCCC", markersize=10, label="Generalist", markeredgecolor="blue", markeredgewidth=2),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#CCCCCC", markersize=10, label="Specialist", markeredgecolor="red", markeredgewidth=2),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#CCCCCC", markersize=10, label="Unclassified", markeredgecolor="#454545", markeredgewidth=0.5),
+        plt.Line2D([], [], color="none", label=""), 
+        # Kanten
         plt.Line2D([0], [0], color="#2E8B57", linewidth=2, label="Fungi-Fungi", alpha=0.3),
         plt.Line2D([0], [0], color="#81BADB", linewidth=2, label="Bacteria-Bacteria", alpha=0.3),
         plt.Line2D([0], [0], color="#882255", linewidth=2, label="Fungi-Bacteria", alpha=0.3),
     ]
-    fig.legend(handles=legend_handles, loc="upper center", ncol=4, frameon=False)
+    fig.legend(handles=legend_handles, loc="upper center", ncol=5, frameon=False)
 
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     
-    print(f"Diff-Grid (Niche) saved to {path}")
+    print(f"Niche-Grid saved to {path}")
+    return path
+
+def plot_niche_consistency(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "FigS3_niche_consistency.png",
+    figsize: tuple[float, float] = (12, 10),
+    node_size: int = 100,
+    edge_width: float = 1.0,
+):
+    """
+    Analysiert die gemeinsamen Kanten (Common Edges) und prüft, 
+    ob die Nischen-Zuweisung (Generalist/Spezialist) konsistent ist.
+    """
+    if len(graphs) != 2:
+        raise ValueError("Exactly 2 graphs are required.")
+
+    G1, G2 = graphs[0], graphs[1]
+    
+    # 1. Gemeinsame Kanten finden
+    edges_g1 = set(G1.edges())
+    edges_g2 = set(G2.edges())
+    common_edges = edges_g1.intersection(edges_g2)
+    
+    if not common_edges:
+        print("Keine gemeinsamen Kanten gefunden.")
+        return
+
+    # 2. Subgraph der gemeinsamen Struktur erstellen
+    # Wir nutzen G1 als Basis für die Topologie
+    G_common = G1.edge_subgraph(common_edges).copy()
+    
+    # Layout berechnen
+    pos = nx.spring_layout(G_common, seed=42, k=0.3)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # 3. Knoten analysieren: Konsistenz der Nische prüfen
+    node_colors = []
+    edge_colors_nodes = [] # Für die Umrandung
+    linewidths_nodes = []
+    
+    # Kategorien für die Legende
+    status_counts = {"Consistent Gen": 0, "Consistent Spec": 0, "Switched": 0, "Unclassified": 0}
+
+    for n in G_common.nodes():
+        # Nische in G1
+        n1 = G1.nodes[n].get("generalist_or_specialist", "None")
+        if isinstance(n1, pd.Series): n1 = n1.iloc[0]
+        n1_str = str(n1) if n1 is not None else "None"
+        
+        # Nische in G2
+        n2 = G2.nodes[n].get("generalist_or_specialist", "None")
+        if isinstance(n2, pd.Series): n2 = n2.iloc[0]
+        n2_str = str(n2) if n2 is not None else "None"
+
+        # Logik zur Färbung
+        face_color = _node_color(G_common, n) # Taxonomie (Pilz/Bakt)
+        
+        is_gen_1 = (n1_str == "Generalist")
+        is_spec_1 = (n1_str == "Specialist")
+        is_gen_2 = (n2_str == "Generalist")
+        is_spec_2 = (n2_str == "Specialist")
+        
+        # Fallunterscheidung
+        if is_gen_1 and is_gen_2:
+            # Konsistenter Generalist
+            edge_color = "blue"
+            lw = 2.5
+            status_counts["Consistent Gen"] += 1
+        elif is_spec_1 and is_spec_2:
+            # Konsistenter Spezialist
+            edge_color = "red"
+            lw = 2.5
+            status_counts["Consistent Spec"] += 1
+        elif (is_gen_1 and is_spec_2) or (is_spec_1 and is_gen_2):
+            # Nischen-Wechsel (Switch)
+            edge_color = "orange" # Auffällig
+            lw = 3.0
+            status_counts["Switched"] += 1
+        else:
+            # Unclassified oder uneinheitlich (z.B. Gen vs None)
+            edge_color = "#454545"
+            lw = 0.5
+            status_counts["Unclassified"] += 1
+            
+        node_colors.append(face_color)
+        edge_colors_nodes.append(edge_color)
+        linewidths_nodes.append(lw)
+
+    # Kanten zeichnen (alle grau oder nach Typ, hier einfach grau für Fokus auf Knoten)
+    nx.draw_networkx_edges(
+        G_common, pos, edge_color="#DDDDDD", width=edge_width, alpha=0.5, ax=ax
+    )
+
+    # Knoten zeichnen
+    nx.draw_networkx_nodes(
+        G_common, pos, 
+        node_color=node_colors,
+        edgecolors=edge_colors_nodes,
+        linewidths=linewidths_nodes,
+        node_size=node_size, 
+        ax=ax
+    )
+    
+    ax.set_title(f"Niche Consistency on Common Edges\n"
+                 f"({G_common.number_of_nodes()} Nodes, {G_common.number_of_edges()} Edges)")
+    ax.axis('off')
+
+    # Legende
+    legend_handles = [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#2E8B57", markersize=8, label="Fungi", markeredgecolor="gray"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#81BADB", markersize=8, label="Bacteria", markeredgecolor="gray"),
+        plt.Line2D([], [], color="none", label=""), 
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Consistent Generalist (n={status_counts['Consistent Gen']})", markeredgecolor="blue", markeredgewidth=2.5),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Consistent Specialist (n={status_counts['Consistent Spec']})", markeredgecolor="red", markeredgewidth=2.5),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Niche Switched (n={status_counts['Switched']})", markeredgecolor="orange", markeredgewidth=3.0),
+    ]
+    
+    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Niche Consistency Plot saved to {path}")
+    return path
+
+def plot_niche_stability_and_degree_change(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "Fig7_niche_stability_degree_change.png",
+    figsize: tuple[float, float] = (12, 10),
+    base_node_size: int = 50,
+):
+    """
+    Vergleicht alle Knoten, die in beiden Graphen existieren.
+    Zeigt, ob sich der Degree (Vernetzungsgrad) geändert hat, 
+    während die Nische stabil blieb.
+    """
+    if len(graphs) != 2:
+        raise ValueError("Exactly 2 graphs are required.")
+
+    G1, G2 = graphs[0], graphs[1]
+    
+    # 1. Gemeinsame Knoten finden (Schnittmenge)
+    nodes_g1 = set(G1.nodes())
+    nodes_g2 = set(G2.nodes())
+    common_nodes = nodes_g1.intersection(nodes_g2)
+    
+    if not common_nodes:
+        print("Keine gemeinsamen Knoten gefunden.")
+        return
+
+    # Wir erstellen einen neuen Graphen nur für die Visualisierung der Topologie
+    # Wir nutzen die Topologie von G1 als Basis
+    G_vis = G1.subgraph(common_nodes).copy()
+    
+    # Layout berechnen
+    pos = nx.spring_layout(G_vis, seed=42, k=0.3)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # 2. Daten für jeden Knoten sammeln
+    node_list = list(G_vis.nodes())
+    face_colors = []
+    edge_colors = []
+    linewidths = []
+    node_sizes = []
+    
+    # Statistiken
+    stats = {
+        "Gen_Stable": 0, "Spec_Stable": 0, "Unclassified": 0,
+        "High_Change": 0, "Low_Change": 0
+    }
+
+    for n in node_list:
+        # Nische bestimmen (wir nehmen an, sie ist gleich, da 0 Switches, 
+        # aber wir prüfen es zur Sicherheit für G1)
+        niche = G1.nodes[n].get("generalist_or_specialist", "None")
+        if isinstance(niche, pd.Series): niche = niche.iloc[0]
+        niche_str = str(niche) if niche is not None else "None"
+        
+        # Degree berechnen
+        deg1 = G1.degree(n)
+        deg2 = G2.degree(n)
+        degree_diff = abs(deg1 - deg2)
+        
+        # Füllfarbe (Taxonomie)
+        face_color = _node_color(G_vis, n)
+        
+        # Umrandung (Nische)
+        if niche_str == "Generalist":
+            edge_color = "blue"
+            lw = 2.0
+            stats["Gen_Stable"] += 1
+        elif niche_str == "Specialist":
+            edge_color = "red"
+            lw = 2.0
+            stats["Spec_Stable"] += 1
+        else:
+            edge_color = "#454545"
+            lw = 0.5
+            stats["Unclassified"] += 1
+            
+        # Knotengröße basierend auf Degree-Änderung
+        size = base_node_size + (degree_diff * 30)
+        
+        if degree_diff > 2:
+            stats["High_Change"] += 1
+        else:
+            stats["Low_Change"] += 1
+
+        face_colors.append(face_color)
+        edge_colors.append(edge_color)
+        linewidths.append(lw)
+        node_sizes.append(size)
+
+    # Kanten zeichnen (aus G1)
+    nx.draw_networkx_edges(
+        G_vis, pos, edge_color="#DDDDDD", width=0.5, alpha=0.5, ax=ax
+    )
+
+    # Knoten zeichnen
+    nx.draw_networkx_nodes(
+        G_vis, pos, 
+        node_color=face_colors,      # Korrigiert
+        edgecolors=edge_colors,      # Korrigiert
+        linewidths=linewidths,       # Korrigiert
+        node_size=node_sizes, 
+        ax=ax
+    )
+    
+    ax.set_title(f"Niche Stability & Network Change (Common Nodes)\n"
+                 f"Node Size = Degree Difference | {labels[0]} vs {labels[1]}")
+    ax.axis('off')
+
+    # Legende
+    legend_handles = [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#2E8B57", markersize=8, label="Fungi", markeredgecolor="gray"),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#81BADB", markersize=8, label="Bacteria", markeredgecolor="gray"),
+        plt.Line2D([], [], color="none", label=""), 
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Generalist (n={stats['Gen_Stable']})", markeredgecolor="blue", markeredgewidth=2),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Specialist (n={stats['Spec_Stable']})", markeredgecolor="red", markeredgewidth=2),
+        plt.Line2D([], [], color="none", label=""), 
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=5, label=f"Stable Degree (n={stats['Low_Change']})", markeredgecolor="black", markeredgewidth=1),
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=15, label=f"High Degree Change (n={stats['High_Change']})", markeredgecolor="black", markeredgewidth=1),
+    ]
+    
+    fig.legend(handles=legend_handles, loc="upper center", ncol=4, frameon=False)
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Niche Stability Plot saved to {path}")
+    return path
+
+def plot_degree_shift_scatter(
+    graphs: list[nx.Graph],
+    labels: list[str],
+    path: str = "Fig8_degree_shift_scatter.png",
+    figsize: tuple[float, float] = (10, 8),
+):
+    """
+    Scatterplot comparing the Degree (Connectivity) of nodes between two habitats.
+    X-Axis: Degree in Habitat 1
+    Y-Axis: Degree in Habitat 2
+    Color: Niche (Generalist/Specialist)
+    Marker: Taxonomy (Fungi/Bacteria)
+    """
+    if len(graphs) != 2:
+        raise ValueError("Exactly 2 graphs are required.")
+
+    G1, G2 = graphs[0], graphs[1]
+    
+    # Gemeinsame Knoten finden
+    common_nodes = set(G1.nodes()).intersection(set(G2.nodes()))
+    
+    if not common_nodes:
+        print("Keine gemeinsamen Knoten gefunden.")
+        return
+
+    # Daten sammeln
+    data = []
+    for n in common_nodes:
+        # Degree
+        deg1 = G1.degree(n)
+        deg2 = G2.degree(n)
+        
+        # Nische
+        niche = G1.nodes[n].get("generalist_or_specialist", "None")
+        if isinstance(niche, pd.Series): niche = niche.iloc[0]
+        niche_str = str(niche) if niche is not None else "None"
+        
+        # Taxonomie (für Marker)
+        # Wir nutzen _node_color, um zu prüfen, ob es Pilz oder Bakterium ist
+        tax_color = _node_color(G1, n)
+        marker = '^' if tax_color == "#2E8B57" else 'o' # Dreieck für Pilz, Kreis für Bakterium
+        
+        # Farbe für Plot
+        if niche_str == "Generalist":
+            color = "blue"
+            label_niche = "Generalist"
+        elif niche_str == "Specialist":
+            color = "red"
+            label_niche = "Specialist"
+        else:
+            color = "gray"
+            label_niche = "Unclassified"
+            
+        data.append({
+            "x": deg1,
+            "y": deg2,
+            "color": color,
+            "marker": marker,
+            "niche_label": label_niche,
+            "tax_label": "Fungi" if marker == '^' else "Bacteria"
+        })
+
+    # Plot erstellen
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Diagonale Linie zeichnen (x=y) für Referenz
+    max_deg = max([max(d['x'], d['y']) for d in data]) if data else 10
+    ax.plot([0, max_deg], [0, max_deg], 'k--', alpha=0.3, label="No Change (x=y)")
+
+    # Punkte plotten
+    # Wir gruppieren für die Legende
+    groups = {
+        ("Generalist", "Fungi"): {"x": [], "y": [], "c": "blue", "m": "^"},
+        ("Generalist", "Bacteria"): {"x": [], "y": [], "c": "blue", "m": "o"},
+        ("Specialist", "Fungi"): {"x": [], "y": [], "c": "red", "m": "^"},
+        ("Specialist", "Bacteria"): {"x": [], "y": [], "c": "red", "m": "o"},
+        ("Unclassified", "Fungi"): {"x": [], "y": [], "c": "gray", "m": "^", "alpha": 0.3},
+        ("Unclassified", "Bacteria"): {"x": [], "y": [], "c": "gray", "m": "o", "alpha": 0.3},
+    }
+    
+    for d in data:
+        key = (d['niche_label'], d['tax_label'])
+        if key in groups:
+            groups[key]["x"].append(d["x"])
+            groups[key]["y"].append(d["y"])
+
+    # Zeichnen
+    for key, vals in groups.items():
+        if vals["x"]:
+            ax.scatter(vals["x"], vals["y"], 
+                       c=vals["c"], 
+                       marker=vals["m"], 
+                       label=f"{key[0]} - {key[1]}", 
+                       alpha=vals.get("alpha", 0.7),
+                       edgecolors='black', linewidth=0.5, s=50)
+
+    ax.set_xlabel(f"Degree in {labels[0]}")
+    ax.set_ylabel(f"Degree in {labels[1]}")
+    ax.set_title("Node Degree Shift between Habitats")
+    ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
+    ax.grid(True, linestyle=':', alpha=0.6)
+    
+    plt.tight_layout()
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    
+    print(f"Degree Shift Scatterplot saved to {path}")
     return path
 
 def analyze_niche(graphs, labels):
@@ -813,7 +942,7 @@ def analyze_niche(graphs, labels):
 
     return df_overlap, df_change
 
-def plot_degree_change(df_change, path="degree_change_analysis.png"):
+def plot_degree_change_old(df_change, path="degree_change_analysis.png"):
     """
     Plots the change in degree (number of connections) for taxa present in both habitats.
     Requires a DataFrame with columns 'Taxon', 'Delta_Degree', etc.
@@ -850,7 +979,7 @@ def plot_degree_change(df_change, path="degree_change_analysis.png"):
     plt.savefig(path, dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_consistent_degree_change_comparison(
+def plot_consistent_degree_change_comparison_old(
     df_change, 
     df_overlap, 
     labels,
