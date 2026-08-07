@@ -4,6 +4,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from adjustText import adjust_text
+
 from _utils import calc_iou, edge_kingdom_type, _parse_node_kingdom
 
 ### (1) ###
@@ -393,14 +395,13 @@ def plot_common_only_detailed(
     G_common = nx.edge_subgraph(graphs[0], common_edges).copy()
 
     # Grid erstellen: 2 Zeilen, 2 Spalten
+    import matplotlib.gridspec as gridspec
     fig = plt.figure(figsize=figsize)
+    gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1.5]) # Obere Reihe 1, Untere (Bakterien) 1.5x so hoch
     
-    # Oben Links (Zeile 0, Spalte 0)
-    ax1 = plt.subplot2grid((2, 2), (0, 0))
-    # Oben Rechts (Zeile 0, Spalte 1)
-    ax2 = plt.subplot2grid((2, 2), (0, 1))
-    # Unten (Zeile 1, spannt über Spalte 0 und 1)
-    ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2)
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax2 = fig.add_subplot(gs[0, 1])
+    ax3 = fig.add_subplot(gs[1, :]) # Unten reicht über beide Spalten
 
     plot_config = [
         (ax1, "Fungi-Fungi"),
@@ -437,13 +438,34 @@ def plot_common_only_detailed(
             ax=ax
         )
 
-        labels_dict = {n: n.split(":")[-1] for n in G_sub.nodes()}
-        nx.draw_networkx_labels(
-            G_sub, pos, 
-            labels=labels_dict, 
-            font_size=9, 
-            ax=ax
-        )
+                # --- LABEL LOGIK ---
+        texts = [] # Liste für adjust_text
+        
+        if e_type == "Bacteria-Bacteria":
+            # Gefilterte Labels für Bakterien
+            for n in G_sub.nodes():
+                name = n.split(":")[-1]
+                if "_gen" not in name:
+                    # Text erstellen und zur Liste hinzufügen
+                    txt = ax.text(pos[n][0], pos[n][1], name, fontsize=9)
+                    texts.append(txt)
+        else:
+            # Alle Labels für Pilze
+            labels_dict = {n: n.split(":")[-1] for n in G_sub.nodes()}
+            nx.draw_networkx_labels(
+                G_sub, pos, 
+                labels=labels_dict, 
+                font_size=9, 
+                ax=ax
+            )
+
+        # --- adjust_text nur für Bakterien ---
+        if texts:
+            adjust_text(texts, 
+                        arrowprops=dict(arrowstyle='-', color='gray', lw=0.5),
+                        autoalign='xy',
+                        force_text=(0.1, 0.2),
+                        lim=100)
 
         ax.set_title(f"{e_type}\n({G_sub.number_of_nodes()} Nodes, {G_sub.number_of_edges()} Edges)")
         ax.axis('off')
