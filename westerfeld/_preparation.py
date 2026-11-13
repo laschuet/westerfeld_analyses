@@ -28,8 +28,7 @@ LOW_PHYLUM = {"Bacteria": ("Actinomycetota", 0.05)}
 
 # Global switch: if True, `common_preparation` removes the samples flagged by
 # LOW_PHYLUM, so every analysis (ordination, NCM, co-occurrence, taxa
-# prediction) works without them. Set to False to keep them. A single call can
-# override it via the `exclude_low_phylum` argument of `common_preparation`.
+# prediction) works without them. Set to False to keep them.
 EXCLUDE_LOW_PHYLUM = False
 
 # Minimum number of reads per sample: `rarefy` removes samples with fewer reads
@@ -307,18 +306,16 @@ def precrop(row):
         return "Winter barley"
 
 
-def rarefy(df, sample_total=0, seed=42):
+def rarefy(df, seed=42):
     """
-    Perform rarefaction.
+    Perform rarefaction: remove samples with fewer than MIN_READS reads, then
+    subsample the reads of every remaining sample without replacement to the
+    read count of the smallest remaining sample.
 
     Parameters
     ----------
     df : pandas.DataFrame
         Absolute abundances.
-    sample_total : int, optional
-        Target read depth. If 0 or larger than the maximum sample depth,
-        the minimum sample depth is used. Otherwise, samples with fewer reads
-        than `sample_total` are dropped and all others are subsampled to it.
     seed : int, optional
         Seed of the random subsampling.
 
@@ -327,23 +324,15 @@ def rarefy(df, sample_total=0, seed=42):
     pandas.DataFrame
         Rarefied table with absolute abundances.
     """
-    # Samples with fewer than MIN_READS reads are removed, not rarefied to.
-    df = df.loc[df.sum(axis=1) >= MIN_READS]
-
     sample_totals = df.sum(axis=1)
-    min_sample_total = sample_totals.min()
-    max_sample_total = sample_totals.max()
-
-    if sample_total == 0 or sample_total >= max_sample_total:
-        sample_total = min_sample_total
-
-    n_dropped = (sample_totals < sample_total).sum()
-    if n_dropped:
+    too_shallow = sample_totals < MIN_READS
+    if too_shallow.any():
         print(
-            f"Rarefaction to {sample_total} reads drops {n_dropped} sample(s) "
-            f"with fewer reads: {sorted(sample_totals[sample_totals < sample_total])}"
+            f"Rarefaction drops {too_shallow.sum()} sample(s) with fewer than "
+            f"{MIN_READS} reads: {sorted(sample_totals[too_shallow])}"
         )
-    df = df.loc[sample_totals >= sample_total]
+    df = df.loc[~too_shallow]
+    sample_total = df.sum(axis=1).min()
 
     rng = np.random.default_rng(seed)
     for i, counts in enumerate(df.to_numpy()):
@@ -410,16 +399,8 @@ def drop_low_phylum(df, kingdom):
 
 
 def common_preparation(
-    kingdom,
-    years=None,
-    habitats=None,
-    beneficials=None,
-    crops=None,
-    exclude_low_phylum=None,
+    kingdom, years=None, habitats=None, beneficials=None, crops=None
 ):
-    if exclude_low_phylum is None:
-        exclude_low_phylum = EXCLUDE_LOW_PHYLUM
-
     print("Join all related tables and keep important columns only...", end="")
     if kingdom == "Fungi":
         df = prepare_fungi()
@@ -498,7 +479,7 @@ def common_preparation(
     df["Precrop"] = df.apply(precrop, axis=1)
     print("DONE")
 
-    if exclude_low_phylum and kingdom in LOW_PHYLUM:
+    if EXCLUDE_LOW_PHYLUM and kingdom in LOW_PHYLUM:
         print("Exclude low phylum...", end="")
         df = drop_low_phylum(df, kingdom)
         print("DONE")
@@ -529,11 +510,11 @@ def taxa_table(df, taxonomy):
     )
 
 
-def rarefied_taxa_table(df, taxonomy, sample_total=0):
+def rarefied_taxa_table(df, taxonomy):
     """
     Pivot the long table into a wide table of absolute abundances
     (rows = samples, columns = taxa) aggregated at the given taxonomy level,
-    and rarefy it to a common read depth.
+    and rarefy it to a common read depth (see `rarefy`).
 
     Parameters
     ----------
@@ -541,10 +522,8 @@ def rarefied_taxa_table(df, taxonomy, sample_total=0):
         Long table (as returned by `common_preparation`).
     taxonomy : str
         Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
-    sample_total : int, optional
-        Target read depth passed to `rarefy` (0 = depth of the smallest sample).
     """
-    return rarefy(taxa_table(df, taxonomy), sample_total)
+    return rarefy(taxa_table(df, taxonomy))
 
 
 def relative_abundances(df):
