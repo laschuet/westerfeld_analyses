@@ -1,12 +1,18 @@
 import pandas as pd
 
 from _preparation import (
+    CROPS,
+    HABITATS,
+    KINGDOMS,
+    TAXONOMY,
+    YEARS,
     common_preparation,
     filter_prevalence,
     mclr,
     rarefied_taxa_table,
     relative_abundances,
 )
+from ncm import ncm
 
 from graph.comparison import (
     compare_graph_metrics,
@@ -23,6 +29,7 @@ from graph.creation import (
 )
 
 from graph.niche import (
+    ncm_niche_classification,
     plot_occurrence_vs_abundance_grid,
     plot_niche_grid,
     plot_niche_consistency,
@@ -161,7 +168,7 @@ def cooccurrence(
     use_mclr=True,
     mclr_pseudocount=1,
     block_scale=None,
-    annotate_niche=False,
+    niche=None,
 ):
     # `kingdoms` maps each kingdom to the taxonomy level to
     # aggregate it at, e.g. `{"Fungi": "Species", "Bacteria": "Genus"}`.
@@ -174,10 +181,11 @@ def cooccurrence(
     # Some graph creators (e.g. Graphical Lasso) cannot handle far more taxa
     # than samples and ask for a prevalence filter via `min_prevalence`; others
     # (e.g. correlation) leave it None and keep every taxon.
+    # `niche`: generalist/specialist classification of this habitat (see
+    # `graph.niche.ncm_niche_classification`); if given, nodes are annotated.
     min_prevalence = getattr(graph_creator, "min_prevalence", None)
 
     kingdom_frames = []
-    kingdom_relative_frames = []
     lookup_frames = []
     for kingdom, taxonomy in kingdoms.items():
         df_long = common_preparation(kingdom, years, habitats, beneficials, crops)
@@ -186,7 +194,6 @@ def cooccurrence(
         if min_prevalence is not None:
             df_rel = filter_prevalence(df_rel, min_prevalence)
 
-        df_rel_raw = df_rel.copy()
         if use_mclr:
             df_rel = mclr(df_rel, pseudocount=mclr_pseudocount)
         df_rel = _scale_block(df_rel, block_scale)
@@ -194,21 +201,18 @@ def cooccurrence(
         prefix = f"{kingdom}:"
         rel_columns = [f"{prefix}{taxon}" for taxon in df_rel.columns]
         df_rel.columns = rel_columns
-        df_rel_raw.columns = rel_columns
 
         kingdom_frames.append(df_rel)
-        kingdom_relative_frames.append(df_rel_raw)
-        if annotate_niche:
+        if niche is not None:
             lookup_frames.append(_build_taxon_lookup(df_long, taxonomy, kingdom, habitats))
 
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
-    df_relative = pd.concat(kingdom_relative_frames, axis=1, join="inner") if annotate_niche else None
-    df_lookup = pd.concat(lookup_frames, axis=0) if annotate_niche else None
+    df_lookup = pd.concat(lookup_frames, axis=0) if niche is not None else None
 
     return graph_creator.create_network(
         df_combined,
         df_lookup=df_lookup,
-        df_relative=df_relative,
+        niche=niche,
     )
 
 def main():
@@ -216,33 +220,29 @@ def main():
     print("| CO-OCCURRENCE |")
     print("-----------------")
 
-    kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
-    crops = ["Winter wheat 1", "Winter wheat 2"]
+    kingdoms = {kingdom: TAXONOMY for kingdom in KINGDOMS}
     graph_creator = CorrelationGraph()
 
-    graph_1 = cooccurrence(
-        kingdoms,
-        graph_creator,
-        years=2019,
-        habitats="Field_Soil",
-        crops=crops,
-        annotate_niche=True,
-    )
+    # One network per habitat. The NCM is fitted once per kingdom and habitat,
+    # and each network is annotated with its own habitat's classification.
+    graphs = []
+    for habitat in HABITATS:
+        ncm_results = [
+            ncm(kingdom, habitat, TAXONOMY, years=YEARS, habitats=habitat, crops=CROPS)
+            for kingdom in KINGDOMS
+        ]
+        graph = cooccurrence(
+            kingdoms,
+            graph_creator,
+            years=YEARS,
+            habitats=habitat,
+            crops=CROPS,
+            niche=ncm_niche_classification(ncm_results),
+        )
+        print(graph)
+        graphs.append(graph)
 
-    graph_2 = cooccurrence(
-        kingdoms,
-        graph_creator,
-        years=2019,
-        habitats="Rhizosphere",
-        crops=crops,
-        annotate_niche=True,
-    )
-
-    print(graph_1)
-    print(graph_2)
-
-    graphs = [graph_1, graph_2]
-    labels = ["Field_Soil", "Rhizosphere"]
+    labels = HABITATS
 
     print("\nPer-graph metrics")
     print(compare_graph_metrics(graphs, labels))

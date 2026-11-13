@@ -16,6 +16,10 @@ from sklearn.metrics.pairwise import pairwise_distances
 
 
 from _preparation import (
+    CROPS,
+    KINGDOMS,
+    TAXONOMY,
+    YEARS,
     common_preparation,
     rarefied_taxa_table,
     relative_abundances,
@@ -60,17 +64,7 @@ def _distance_matrix(df_relative):
     return DistanceMatrix(distances, ids)
 
 
-def permanova(
-    type_label,
-    taxonomy,
-    factor,
-    years=None,
-    habitats=None,
-    beneficials=None,
-    crops=None,
-    permutations=999,
-    seed=42,
-):
+def permanova(df_relative, factor, permutations=999, seed=42):
     """
     PERMANOVA: does community composition differ across the groups of `factor`
     (an experimental factor in the sample index)?
@@ -78,27 +72,13 @@ def permanova(
     Runs on the full Bray-Curtis distances of the relative abundances -- the same
     dissimilarities the ordination visualizes, NOT the lossy 2D embedding.
     """
-    df_relative = _prepare_relative_abundances(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
     grouping = df_relative.index.get_level_values(factor).to_numpy()
     return skbio_permanova(
         _distance_matrix(df_relative), grouping, permutations=permutations, seed=seed
     )
 
 
-def permdisp(
-    type_label,
-    taxonomy,
-    factor,
-    years=None,
-    habitats=None,
-    beneficials=None,
-    crops=None,
-    test="median",
-    permutations=999,
-    seed=42,
-):
+def permdisp(df_relative, factor, test="median", permutations=999, seed=42):
     """
     PERMDISP / betadisper: do the groups of `factor` differ in multivariate
     dispersion (spread around their centroid)?
@@ -108,9 +88,6 @@ def permdisp(
     supports reading the PERMANOVA result as a genuine location difference.
     Runs on the full Bray-Curtis distances of the relative abundances.
     """
-    df_relative = _prepare_relative_abundances(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
     grouping = df_relative.index.get_level_values(factor).to_numpy()
     return skbio_permdisp(
         _distance_matrix(df_relative),
@@ -134,24 +111,13 @@ def _tsne(df_relative, perplexity):
     return embedding, tsne.kl_divergence_, trust
 
 
-def scan_perplexity(
-    type_label,
-    taxonomy,
-    years=None,
-    habitats=None,
-    beneficials=None,
-    crops=None,
-    step=5,
-):
+def scan_perplexity(df_relative, step=5):
     """
     Compute t-SNE quality metrics across a range of perplexity values to help
     choose one. Returns a DataFrame indexed by perplexity with the KL divergence
     and trustworthiness of each embedding (perplexity must stay below the sample
     count, so the range tops out there).
     """
-    df_relative = _prepare_relative_abundances(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
     n_samples = df_relative.shape[0]
     print(f"Scanning perplexity over {n_samples} samples...")
 
@@ -168,23 +134,12 @@ def scan_perplexity(
     return pd.DataFrame(rows).set_index("perplexity")
 
 
-def ordination(
-    type_label,
-    taxonomy,
-    perplexity,
-    years=None,
-    habitats=None,
-    beneficials=None,
-    crops=None,
-):
+def ordination(type_label, df_relative, perplexity):
     """
         Compute a 2D t-SNE ordination of community composition (Bray-Curtis on
         relative abundances). The returned embedding keeps the per-sample metadata
         index, so it can be coloured/marked by any experimental factor afterwards.
     """
-    df_relative = _prepare_relative_abundances(
-        type_label, taxonomy, years, habitats, beneficials, crops
-    )
     n_samples = df_relative.shape[0]
     print(f"Learning manifold over {n_samples} samples...")
 
@@ -254,57 +209,35 @@ def plot_perplexity_scan_multi(scans, path="FigS1_perplexity_combined.png"):
     return fig
 
 
-def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordination_combined.png"):
+def plot_ordination_multi(results, stats, color_by, marker_by=None, path="Fig1_ordination_combined.png"):
     """
         Scatter the t-SNE embedding for multiple type labels side by side.
         `results` is a dictionary: {'Bacteria': result_obj, 'Fungi': result_obj}
+        `stats` is a dictionary: {'Bacteria': (permanova_res, permdisp_res), ...}
     """
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    
-    my_colors = ['#FF8C00', '#2E8B57'] 
-    
+
+    my_colors = ['#FF8C00', '#2E8B57']
+
     for ax, (type_label, result) in zip(axes, results.items()):
         x = result.embedding["x"].to_numpy()
         y = result.embedding["y"].to_numpy()
         color_values = result.embedding.index.get_level_values(color_by)
-        
-        # --- Statistik berechnen ---
-        stat_text = ""
-        try:           
-            perm_res = permanova(
-                type_label, 
-                "Genus", 
-                "Habitat", 
-                years=2019, 
-                crops=["Winter wheat 1", "Winter wheat 2"]
-            )
-            p_val_perm = perm_res['p-value']
-            # R^2 (share of variation explained by habitat) from pseudo-F:
-            # F = (R^2 / (g - 1)) / ((1 - R^2) / (n - g))
-            f_stat = perm_res['test statistic']
-            n, g = perm_res['sample size'], perm_res['number of groups']
-            r2_perm = f_stat * (g - 1) / (f_stat * (g - 1) + (n - g))
 
-            disp_res = permdisp(
-                type_label, 
-                "Genus", 
-                "Habitat", 
-                years=2019, 
-                crops=["Winter wheat 1", "Winter wheat 2"], 
-                test="centroid"
-            )
-            p_val_disp = disp_res['p-value']
-            
-            # Text formatieren (z.B. p < 0.001 oder p = 0.045)
-            perm_str = f"p < 0.001" if p_val_perm < 0.001 else f"p = {p_val_perm:.3f}"
-            disp_str = f"p < 0.001" if p_val_disp < 0.001 else f"p = {p_val_disp:.3f}"
-            
-            stat_text = (f"PERMANOVA: $R^2$ = {r2_perm:.2f}, {perm_str}\n"
-                         f"PERMDISP:  {disp_str}")
-                         
-        except Exception as e:
-            print(f"Warnung: Statistik konnte für {type_label} nicht berechnet werden: {e}")
-            stat_text = "Stats: N/A"
+        perm_res, disp_res = stats[type_label]
+        p_val_perm = perm_res['p-value']
+        # R^2 (share of variation explained by habitat) from pseudo-F:
+        # F = (R^2 / (g - 1)) / ((1 - R^2) / (n - g))
+        f_stat = perm_res['test statistic']
+        n, g = perm_res['sample size'], perm_res['number of groups']
+        r2_perm = f_stat * (g - 1) / (f_stat * (g - 1) + (n - g))
+        p_val_disp = disp_res['p-value']
+
+        perm_str = f"p < 0.001" if p_val_perm < 0.001 else f"p = {p_val_perm:.3f}"
+        disp_str = f"p < 0.001" if p_val_disp < 0.001 else f"p = {p_val_disp:.3f}"
+
+        stat_text = (f"PERMANOVA: $R^2$ = {r2_perm:.2f}, {perm_str}\n"
+                     f"PERMDISP:  {disp_str}")
 
         ax.set_title(
             f"{type_label}\n"
@@ -386,16 +319,22 @@ def main():
     print("| ORDINATION |")
     print("--------------")
 
-    crops = ["Winter wheat 1", "Winter wheat 2"]
-    type_labels = ["Fungi", "Bacteria"]
-    years = 2019
+    # Prepare (and rarefy) once per kingdom; scan, map and statistics all use
+    # these same relative abundances.
+    prepared = {
+        type_label: _prepare_relative_abundances(
+            type_label, TAXONOMY, years=YEARS, habitats=None, beneficials=None, crops=CROPS
+        )
+        for type_label in KINGDOMS
+    }
 
     all_scans = {}
     all_results = {}
-    
-    for type_label in type_labels:
+    all_stats = {}
+
+    for type_label in KINGDOMS:
         print(f"Scanning perplexity for {type_label}...")
-        scan = scan_perplexity(type_label, "Genus", years=years, crops=crops)
+        scan = scan_perplexity(prepared[type_label])
         all_scans[type_label] = scan
 
     plot_perplexity_scan_multi(all_scans, path="FigS1_perplexity_combined.png")
@@ -405,25 +344,27 @@ def main():
         best_perp = scan["trustworthiness"].idxmax()      
         optimal_perplexities[type_label] = best_perp
 
-    for type_label in type_labels:
+    for type_label in KINGDOMS:
         current_perplexity = optimal_perplexities[type_label]
-        
+
         print(f"Calculating Ordination for {type_label} with perplexity={current_perplexity}...")
-        
+
         result = ordination(
-            type_label,
-            "Genus",
-            perplexity=current_perplexity,  
-            years=years,
-            crops=crops,
+            type_label, prepared[type_label], perplexity=current_perplexity
         )
-        
+
         result.embedding.to_csv(f"ordination_{type_label}.csv")
         all_results[type_label] = result
 
+        all_stats[type_label] = (
+            permanova(prepared[type_label], "Habitat"),
+            permdisp(prepared[type_label], "Habitat", test="centroid"),
+        )
+
     plot_ordination_multi(
-        all_results, 
-        "Habitat", 
+        all_results,
+        all_stats,
+        "Habitat",
         "Crop", 
         path="Fig1_ordination_combined.png"
     )

@@ -20,7 +20,7 @@ class GraphCreationMethod(ABC):
         self,
         df: pd.DataFrame,
         df_lookup: pd.DataFrame | None = None,
-        df_relative: pd.DataFrame | None = None,
+        niche: pd.DataFrame | None = None,
     ) -> nx.Graph:
         pass
 
@@ -59,7 +59,7 @@ class CorrelationGraph(GraphCreationMethod):
         self,
         df: pd.DataFrame,
         df_lookup: pd.DataFrame | None = None,
-        df_relative: pd.DataFrame | None = None,
+        niche: pd.DataFrame | None = None,
     ) -> nx.Graph:
         corr_df, pval_df = self.calculate_correlations(df)
 
@@ -79,8 +79,8 @@ class CorrelationGraph(GraphCreationMethod):
                     )
 
         _annotate_kingdoms(G)
-        if df_lookup is not None and df_relative is not None:
-            _annotate_niche(G, df_lookup, df_relative)
+        if df_lookup is not None and niche is not None:
+            _annotate_niche(G, df_lookup, niche)
         return G
 
 class GlassoGraph(GraphCreationMethod):
@@ -107,7 +107,7 @@ class GlassoGraph(GraphCreationMethod):
         self,
         df: pd.DataFrame,
         df_lookup: pd.DataFrame | None = None,
-        df_relative: pd.DataFrame | None = None,
+        niche: pd.DataFrame | None = None,
     ) -> nx.Graph:
         # Graphical Lasso
         # (https://scikit-learn.org/stable/modules/generated/sklearn.covariance.GraphicalLasso.html)
@@ -171,8 +171,8 @@ class GlassoGraph(GraphCreationMethod):
                     )
 
         _annotate_kingdoms(G)
-        if df_lookup is not None and df_relative is not None:
-            _annotate_niche(G, df_lookup, df_relative)
+        if df_lookup is not None and niche is not None:
+            _annotate_niche(G, df_lookup, niche)
         return G
 
     def plot_covariance_matrix(self, covariance_matrix, postfix=""):

@@ -9,7 +9,16 @@ from dataclasses import dataclass
 
 from lmfit import Parameters, Model
 
-from _preparation import common_preparation, rarefied_taxa_table, relative_abundances
+from _preparation import (
+    CROPS,
+    HABITATS,
+    KINGDOMS,
+    TAXONOMY,
+    YEARS,
+    common_preparation,
+    rarefied_taxa_table,
+    relative_abundances,
+)
 from _utils import calc_iou
 
 
@@ -459,24 +468,20 @@ def main():
     print("| NEUTRAL COMMUNITY MODEL |")
     print("---------------------------")
 
-    crops = ["Winter wheat 1", "Winter wheat 2"]
-    habitats = ["Field_Soil", "Rhizosphere"]
-    type_labels = ["Fungi", "Bacteria"] 
-
     all_results_nested = {}
     all_pivots = {}
 
-    for type_label in type_labels:
+    for type_label in KINGDOMS:
         print(f"\nProcessing Type: {type_label}")
         results = []
-        for habitat in habitats:
+        for habitat in HABITATS:
             result = ncm(
                 type_label,
                 habitat,
-                "Genus",
-                years=2019,
+                TAXONOMY,
+                years=YEARS,
                 habitats=habitat,
-                crops=crops,
+                crops=CROPS,
             )
             results.append(result)
         

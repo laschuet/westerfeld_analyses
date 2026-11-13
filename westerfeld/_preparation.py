@@ -19,6 +19,12 @@ EXPERIMENT_COLUMNS = [
     "Precrop",
 ]
 
+YEARS = 2019
+CROPS = ["Winter wheat 1", "Winter wheat 2"]
+HABITATS = ["Field_Soil", "Rhizosphere"]
+KINGDOMS = ["Fungi", "Bacteria"]
+TAXONOMY = "Genus"
+
 # Samples with a low share of reads in one phylum, per kingdom: (phylum,
 # threshold). In 2019 winter wheat, the share of Actinomycetota reads splits the
 # bacterial samples into two groups: about half have at most 4.3 % (median
