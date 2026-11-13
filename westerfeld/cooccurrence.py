@@ -9,21 +9,33 @@ from _preparation import (
 )
 
 from graph.comparison import (
-    common_subgraph,
     compare_graph_metrics,
     compare_graphs_pairwise,
-    compare_graphs_pairwise_node_type_iou,
-    edge_kingdom_type,
-    find_similar_subgraphs,
     graph_edge_type_summary,
     graph_metrics,
     graph_node_type_summary,
-    plot_graphs_side_by_side,
-    is_subgraph,
+    plot_diff_grid,
+    export_common_edges_to_excel,
+    plot_common_only_detailed,
 )
-from graph.creation import CorrelationGraph, GlassoGraph
+from graph.creation import (
+    CorrelationGraph, 
+)
 
+from graph.niche import (
+    plot_occurrence_vs_abundance_grid,
+    plot_niche_grid,
+    plot_niche_consistency,
+    plot_niche_stability_and_degree_change,
+    plot_degree_shift_scatter,
+    plot_degree_shift_scatter_labeled,
+    plot_degree_shift_scatter_labeled_split,
+    analyze_niche,
+    plot_degree_change_old,
+    plot_consistent_degree_change_comparison_old,
+)
 
+ 
 def _scale_block(df, mode):
     """
     Per-kingdom block scaling for the multi-kingdom merge.
@@ -46,14 +58,12 @@ def _scale_block(df, mode):
         return df / scale
     raise ValueError(f"Unknown mode value: {mode}")
 
-
 def _sanitize_sheet_name(name):
     invalid = '[]:*?/\\'
     sanitized = ''.join('_' if ch in invalid else ch for ch in str(name))
     return sanitized[:31]
 
-
-def _build_taxon_lookup(df_long, taxonomy, kingdom):
+def _build_taxon_lookup(df_long, taxonomy, kingdom, habitat):
     taxon_names = (
         df_long[[taxonomy]]
         .drop_duplicates()
@@ -66,87 +76,10 @@ def _build_taxon_lookup(df_long, taxonomy, kingdom):
         {
             "kingdom": kingdom,
             "taxon": taxon_names.values,
+            "habitat": habitat,
         },
         index=lookup_index,
     )
-
-
-def plot_graphs_side_by_side_by_niche(
-    graphs,
-    labels,
-    path="graph_side_by_side_niche.png",
-    figsize=(14, 7),
-    node_size=80,
-    edge_width=1.0,
-):
-    import matplotlib.pyplot as plt
-    import networkx as nx
-
-    fig, axes = plt.subplots(1, len(graphs), figsize=figsize)
-    if len(graphs) == 1:
-        axes = [axes]
-
-    classification_colors = {
-        "Generalist": "#2ca02c",
-        "Specialist": "#d62728",
-        "None": "#7f7f7f",
-    }
-
-    for ax, G, label in zip(axes, graphs, labels):
-        if G.number_of_nodes() == 0:
-            ax.set_axis_off()
-            continue
-
-        pos = nx.spring_layout(G, seed=42)
-        node_colors = [
-            classification_colors.get(
-                G.nodes[n].get("generalist_or_specialists", "None"),
-                "#7f7f7f",
-            )
-            for n in G.nodes
-        ]
-
-        for edge_type in sorted({edge_kingdom_type(G, u, v) for u, v in G.edges()}):
-            edges = [e for e in G.edges() if edge_kingdom_type(G, e[0], e[1]) == edge_type]
-            if not edges:
-                continue
-            nx.draw_networkx_edges(
-                G,
-                pos,
-                edgelist=edges,
-                edge_color="#999999",
-                width=edge_width,
-                alpha=0.6,
-                ax=ax,
-            )
-
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=list(G.nodes),
-            node_color=node_colors,
-            node_size=node_size,
-            ax=ax,
-        )
-
-        ax.set_title(label)
-        ax.set_axis_on()
-        ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
-
-    legend_handles = [
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor=color, markersize=10, label=label)
-        for label, color in (
-            ("Generalist", classification_colors["Generalist"]),
-            ("Specialist", classification_colors["Specialist"]),
-            ("Unclassified", classification_colors["None"]),
-        )
-    ]
-    fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
-    fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    return path
-
 
 def export_cooccurrence_results(path, graphs, labels):
     graph_metrics_df = pd.DataFrame([graph_metrics(graph) for graph in graphs], index=labels)
@@ -156,8 +89,6 @@ def export_cooccurrence_results(path, graphs, labels):
         for metric in (
             "nodes_iou",
             "edges_iou",
-            "kernel_shortest_path",
-            "kernel_weisfeiler_lehman",
         )
     }
     edge_iou_sheets = {
@@ -220,19 +151,6 @@ def export_cooccurrence_results(path, graphs, labels):
         for name, df in node_iou_sheets.items():
             df.to_excel(writer, sheet_name=_sanitize_sheet_name(name))
 
-        common_df = pd.DataFrame(
-            [
-                {
-                    "common_nodes": common_subgraph(graphs[0], graphs[1]).number_of_nodes(),
-                    "common_edges": common_subgraph(graphs[0], graphs[1]).number_of_edges(),
-                    "graph_1_is_subgraph_of_graph_2": is_subgraph(graphs[0], graphs[1]),
-                    "graph_2_is_subgraph_of_graph_1": is_subgraph(graphs[1], graphs[0]),
-                }
-            ]
-        )
-        common_df.to_excel(writer, sheet_name=_sanitize_sheet_name("Common Subgraph"), index=False)
-
-
 def cooccurrence(
     kingdoms,
     graph_creator,
@@ -281,7 +199,7 @@ def cooccurrence(
         kingdom_frames.append(df_rel)
         kingdom_relative_frames.append(df_rel_raw)
         if annotate_niche:
-            lookup_frames.append(_build_taxon_lookup(df_long, taxonomy, kingdom))
+            lookup_frames.append(_build_taxon_lookup(df_long, taxonomy, kingdom, habitats))
 
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
     df_relative = pd.concat(kingdom_relative_frames, axis=1, join="inner") if annotate_niche else None
@@ -293,7 +211,6 @@ def cooccurrence(
         df_relative=df_relative,
     )
 
-
 def main():
     print("-----------------")
     print("| CO-OCCURRENCE |")
@@ -302,7 +219,6 @@ def main():
     kingdoms = {"Fungi": "Genus", "Bacteria": "Genus"}
     crops = ["Winter wheat 1", "Winter wheat 2"]
     graph_creator = CorrelationGraph()
-    # graph_creator = GlassoGraph()
 
     graph_1 = cooccurrence(
         kingdoms,
@@ -340,8 +256,6 @@ def main():
     for metric in (
         "nodes_iou",
         "edges_iou",
-        "kernel_shortest_path",
-        "kernel_weisfeiler_lehman",
     ):
         print(f"Pairwise {metric}")
         print(compare_graphs_pairwise(graphs, labels, metric))
@@ -358,47 +272,31 @@ def main():
     print("\nPairwise nodes_iou for Bacteria nodes")
     print(compare_graphs_pairwise(graphs, labels, "nodes_iou", pair_type="Bacteria"))
 
-    plot_graphs_side_by_side(
-        graphs,
-        labels,
-        path="graph_side_by_side.png",
-        figsize=(14, 7),
-        node_size=80,
-        edge_width=1.0,
-    )
-    plot_graphs_side_by_side_by_niche(
-        graphs,
-        labels,
-        path="graph_side_by_side_niche.png",
-        figsize=(14, 7),
-        node_size=80,
-        edge_width=1.0,
-    )
-
-    cs = common_subgraph(graph_1, graph_2)
-    print(
-        f"\nCommon subgraph: {cs.number_of_nodes()} nodes, {cs.number_of_edges()} edges"
-    )
-    print(f"Graph_1 is subgraph of graph_2: {is_subgraph(graph_1, graph_2)}")
-    print(f"Graph_2 is subgraph of graph_1: {is_subgraph(graph_2, graph_1)}")
-
     for graph, label in zip(graphs, labels):
         node_attrs = pd.DataFrame.from_dict(dict(graph.nodes(data=True)), orient="index")
         if "generalist_or_specialists" in node_attrs.columns:
             print(f"\nNiche classification counts for {label}")
             print(node_attrs["generalist_or_specialists"].value_counts())
+  
 
-    print("\nExport Excel results to cooccurrence_results.xlsx")
-    export_cooccurrence_results("cooccurrence_results.xlsx", graphs, labels)
+    # Plots network
+    plot_diff_grid(graphs, labels)
+    plot_common_only_detailed(graphs, labels)
 
-    # Can be slow on dense graphs
-    # similar = find_similar_subgraphs(graph_1, graph_2)
-    # largest = max((s.number_of_edges() for s in similar), default=0)
-    # print(
-    #     f"\nFind_similar_subgraphs: {len(similar)} sign-matching substructures, "
-    #     f"largest = {largest} edges"
-    # )
+    # Plots niche
+    #df_overlap, df_change = analyze_niche(graphs, labels)
+    plot_occurrence_vs_abundance_grid(graphs, labels)
+    plot_niche_grid(graphs, labels)
+    plot_niche_consistency(graphs, labels)
+    plot_niche_stability_and_degree_change(graphs, labels)
+    plot_degree_shift_scatter_labeled_split(graphs, labels)
+    #plot_degree_change_old(graphs, labels)
+    #plot_consistent_degree_change_comparison_old(graphs, labels)
 
+
+    # Excel exports 
+    export_common_edges_to_excel("common_edges_list.xlsx", graphs, labels)
+    export_cooccurrence_results("cooccurrence_results.xlsx", graphs, labels) 
 
 if __name__ == "__main__":
     main()

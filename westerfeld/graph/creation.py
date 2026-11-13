@@ -11,8 +11,8 @@ from scipy.stats import spearmanr, t as student_t
 from sklearn.covariance import GraphicalLassoCV
 from sklearn.preprocessing import StandardScaler
 
-from graph.niche import identify_generalists_or_specialists
-
+from graph.niche import _annotate_niche
+from _utils import _annotate_kingdoms
 
 class GraphCreationMethod(ABC):
     @abstractmethod
@@ -23,54 +23,6 @@ class GraphCreationMethod(ABC):
         df_relative: pd.DataFrame | None = None,
     ) -> nx.Graph:
         pass
-
-
-def _annotate_niche(G, df_lookup, df_relative):
-    """Attach the lookup attributes plus a niche classification to each node."""
-    nodes_attr = dict(G.nodes)
-    for node in G.nodes:
-        attributes = df_lookup.loc[node]
-        spec_or_gen, _, _ = identify_generalists_or_specialists(
-            df_relative[node].to_numpy()
-        )
-        attributes.loc["generalist_or_specialists"] = (
-            spec_or_gen if spec_or_gen is not None else "None"
-        )
-        nodes_attr[node] = attributes
-    nx.set_node_attributes(G, nodes_attr)
-
-
-def _parse_kingdom_from_node(node):
-    if isinstance(node, str) and ":" in node:
-        return node.split(":", 1)[0]
-    return None
-
-
-def _edge_kingdom_type(node_a, node_b):
-    kingdom_a = _parse_kingdom_from_node(node_a)
-    kingdom_b = _parse_kingdom_from_node(node_b)
-    if kingdom_a is None or kingdom_b is None:
-        return None
-    if kingdom_a == kingdom_b:
-        return f"{kingdom_a}-{kingdom_a}"
-    return "Fungi-Bacteria" if {kingdom_a, kingdom_b} == {"Fungi", "Bacteria"} else f"{kingdom_a}-{kingdom_b}"
-
-
-def _annotate_kingdoms(G):
-    nx.set_node_attributes(
-        G,
-        {node: _parse_kingdom_from_node(node) for node in G.nodes},
-        "kingdom",
-    )
-    nx.set_edge_attributes(
-        G,
-        {
-            (u, v): _edge_kingdom_type(u, v)
-            for u, v in G.edges
-        },
-        "kingdom_edge",
-    )
-
 
 class CorrelationGraph(GraphCreationMethod):
     # Pairwise correlations are well-defined for any number of taxa, so no
@@ -130,7 +82,6 @@ class CorrelationGraph(GraphCreationMethod):
         if df_lookup is not None and df_relative is not None:
             _annotate_niche(G, df_lookup, df_relative)
         return G
-
 
 class GlassoGraph(GraphCreationMethod):
     # Graphical Lasso inverts the taxa covariance, which is singular when there
