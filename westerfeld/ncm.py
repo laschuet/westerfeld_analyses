@@ -66,8 +66,17 @@ def wilson_confidence_interval(p, n, alpha=0.05):
 def ncm(
     type_label, label, taxonomy, years=None, habitats=None, beneficials=None, crops=None
 ):
+    """Prepare and rarefy the data, then fit the NCM (see `fit_ncm`)."""
     df_long = common_preparation(type_label, years, habitats, beneficials, crops)
     df_abs = rarefied_taxa_table(df_long, taxonomy)
+    return fit_ncm(type_label, label, df_abs)
+
+
+def fit_ncm(type_label, label, df_abs):
+    """
+    Fit the NCM to a rarefied table of absolute abundances (rows = samples,
+    columns = taxa), e.g. as returned by `rarefied_taxa_table`.
+    """
     community_size = int(df_abs.sum(axis=1).min())
     print(f"Community size: {community_size}")
     df_rel_taxa_abundances = relative_abundances(df_abs)

@@ -12,7 +12,7 @@ from _preparation import (
     rarefied_taxa_table,
     relative_abundances,
 )
-from ncm import ncm
+from ncm import fit_ncm
 
 from graph.comparison import (
     compare_graph_metrics,
@@ -132,13 +132,13 @@ def export_cooccurrence_results(path, graphs, labels):
             )
 
             node_attrs = pd.DataFrame.from_dict(dict(graph.nodes(data=True)), orient="index")
-            if "generalist_or_specialists" in node_attrs.columns:
+            if "generalist_or_specialist" in node_attrs.columns:
                 node_attrs.to_excel(
                     writer,
                     sheet_name=_sanitize_sheet_name(f"{label} Niche Classification"),
                 )
                 niche_summary = (
-                    node_attrs["generalist_or_specialists"]
+                    node_attrs["generalist_or_specialist"]
                     .value_counts()
                     .rename_axis("classification")
                     .reset_index(name="count")
@@ -168,7 +168,7 @@ def cooccurrence(
     use_mclr=True,
     mclr_pseudocount=1,
     block_scale=None,
-    niche=None,
+    annotate_niche=False,
 ):
     # `kingdoms` maps each kingdom to the taxonomy level to
     # aggregate it at, e.g. `{"Fungi": "Species", "Bacteria": "Genus"}`.
@@ -178,18 +178,23 @@ def cooccurrence(
     # block-scale, then inner-join the per-kingdom frames on the sample axis.
     # Columns are prefixed with the kingdom (e.g. "Fungi:species_x") so each
     # node's origin is explicit in the resulting graph.
-    # Some graph creators (e.g. Graphical Lasso) cannot handle far more taxa
-    # than samples and ask for a prevalence filter via `min_prevalence`; others
-    # (e.g. correlation) leave it None and keep every taxon.
-    # `niche`: generalist/specialist classification of this habitat (see
-    # `graph.niche.ncm_niche_classification`); if given, nodes are annotated.
+    # Each graph creator sets its own prevalence filter via `min_prevalence`
+    # (correlation: 0.5, Graphical Lasso: 0.8); None keeps every taxon.
+    # `annotate_niche`: fit the NCM to each kingdom's rarefied table (the same
+    # table the network is built from, before the prevalence filter) and
+    # annotate the nodes with the generalist/specialist classification of this
+    # habitat (see `graph.niche.ncm_niche_classification`). `habitats` must
+    # then be a single habitat.
     min_prevalence = getattr(graph_creator, "min_prevalence", None)
 
     kingdom_frames = []
     lookup_frames = []
+    ncm_results = []
     for kingdom, taxonomy in kingdoms.items():
         df_long = common_preparation(kingdom, years, habitats, beneficials, crops)
         df_abs = rarefied_taxa_table(df_long, taxonomy)
+        if annotate_niche:
+            ncm_results.append(fit_ncm(kingdom, habitats, df_abs))
         df_rel = relative_abundances(df_abs)
         if min_prevalence is not None:
             df_rel = filter_prevalence(df_rel, min_prevalence)
@@ -203,11 +208,12 @@ def cooccurrence(
         df_rel.columns = rel_columns
 
         kingdom_frames.append(df_rel)
-        if niche is not None:
+        if annotate_niche:
             lookup_frames.append(_build_taxon_lookup(df_long, taxonomy, kingdom, habitats))
 
     df_combined = pd.concat(kingdom_frames, axis=1, join="inner")
-    df_lookup = pd.concat(lookup_frames, axis=0) if niche is not None else None
+    df_lookup = pd.concat(lookup_frames, axis=0) if annotate_niche else None
+    niche = ncm_niche_classification(ncm_results) if annotate_niche else None
 
     return graph_creator.create_network(
         df_combined,
@@ -223,23 +229,20 @@ def main():
     kingdoms = {kingdom: TAXONOMY for kingdom in KINGDOMS}
     graph_creator = CorrelationGraph()
 
-    # One network per habitat. The NCM is fitted once per kingdom and habitat,
-    # and each network is annotated with its own habitat's classification.
+    # One network per habitat, annotated with its own habitat's NCM
+    # generalist/specialist classification.
     graphs = []
     for habitat in HABITATS:
-        ncm_results = [
-            ncm(kingdom, habitat, TAXONOMY, years=YEARS, habitats=habitat, crops=CROPS)
-            for kingdom in KINGDOMS
-        ]
         graph = cooccurrence(
             kingdoms,
             graph_creator,
             years=YEARS,
             habitats=habitat,
             crops=CROPS,
-            niche=ncm_niche_classification(ncm_results),
+            annotate_niche=True,
         )
         print(graph)
+        print(f"Expected chance edges: {graph.graph.get('chance_edges', float('nan')):.1f}")
         graphs.append(graph)
 
     labels = HABITATS
@@ -274,9 +277,9 @@ def main():
 
     for graph, label in zip(graphs, labels):
         node_attrs = pd.DataFrame.from_dict(dict(graph.nodes(data=True)), orient="index")
-        if "generalist_or_specialists" in node_attrs.columns:
+        if "generalist_or_specialist" in node_attrs.columns:
             print(f"\nNiche classification counts for {label}")
-            print(node_attrs["generalist_or_specialists"].value_counts())
+            print(node_attrs["generalist_or_specialist"].value_counts())
   
 
     # Plots network

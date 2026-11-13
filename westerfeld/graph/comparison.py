@@ -30,6 +30,7 @@ def graph_metrics(G: nx.Graph) -> dict:
             "avg_shortest_path": float("nan"),
             "avg_clustering": 0.0,
             "modularity": -1.0,
+            "chance_edges": G.graph.get("chance_edges", float("nan")),
         }
 
     degrees = [d for _, d in G.degree()]
@@ -49,6 +50,9 @@ def graph_metrics(G: nx.Graph) -> dict:
         "modularity": nx.community.modularity(
             G, nx.community.label_propagation_communities(G)
         ),
+        # Expected number of edges without any association (see
+        # `CorrelationGraph.chance_edges`); NaN for other graph types.
+        "chance_edges": G.graph.get("chance_edges", float("nan")),
     }
 
 def compare_graph_metrics(graphs: list[nx.Graph], labels: list[str]) -> pd.DataFrame:
@@ -91,11 +95,11 @@ def _iou_nodes(g1, g2, pair_type: str | None = None):
     return calc_iou(list(g1.nodes), list(g2.nodes))
 
 def _iou_edges(g1, g2, pair_type: str | None = None):
+    """Shared edges (see `shared_edges`) divided by all edges of both graphs."""
     g1 = _filter_graph_by_edge_type(g1, pair_type)
     g2 = _filter_graph_by_edge_type(g2, pair_type)
-    e1 = ["|".join(sorted(e)) for e in g1.edges]
-    e2 = ["|".join(sorted(e)) for e in g2.edges]
-    return calc_iou(e1, e2)
+    union = _canonical_edges(g1) | _canonical_edges(g2)
+    return len(shared_edges(g1, g2)) / len(union) if union else float("nan")
 
 _METRICS = {
     "nodes_iou": _iou_nodes,
@@ -112,7 +116,19 @@ def shared_nodes(G1: nx.Graph, G2: nx.Graph):
     return sorted(set(G1.nodes) & set(G2.nodes))
 
 def shared_edges(G1: nx.Graph, G2: nx.Graph):
-    return sorted(_canonical_edges(G1) & _canonical_edges(G2))  
+    """
+    Edges present in both graphs with the same sign of association, as sorted
+    (u, v) tuples. The graphs are undirected, so (a, b) and (b, a) are the same
+    edge; an edge that is positive in one graph and negative in the other is
+    not shared.
+    """
+    common = _canonical_edges(G1) & _canonical_edges(G2)
+    return sorted(
+        (u, v)
+        for u, v in common
+        if G1.edges[u, v].get("positive_association")
+        == G2.edges[u, v].get("positive_association")
+    )
 
 def _edge_type_edges(G: nx.Graph, edge_type: str | None) -> set[tuple]:
     return {
@@ -257,24 +273,6 @@ def graph_edge_type_summary(G: nx.Graph, include_nodes: bool = False):
         summary.append(row)
     return pd.DataFrame(summary).set_index("edge_type")
 
-    degrees = [d for _, d in G.degree()]
-    components = list(nx.connected_components(G))
-    largest_cc = max(components, key=len)
-    H = G.subgraph(largest_cc)
-    return {
-        "nodes": n_nodes,
-        "edges": n_edges,
-        "density": nx.density(G),
-        "avg_degree": float(np.mean(degrees)),
-        "components": len(components),
-        "largest_cc": len(largest_cc),
-        "diameter": nx.diameter(H),
-        "avg_shortest_path": nx.average_shortest_path_length(H),
-        "avg_clustering": nx.average_clustering(G),
-        "modularity": nx.community.modularity(
-            G, nx.community.label_propagation_communities(G)
-        ),
-    }
 ### (6) ###
 
 ### (7) ###
@@ -291,12 +289,13 @@ def plot_diff_grid(
 
     fig, axes = plt.subplots(3, 2, figsize=figsize)
     
-    edges_g1 = set(graphs[0].edges())
-    edges_g2 = set(graphs[1].edges())
+    edges_g1 = _canonical_edges(graphs[0])
+    edges_g2 = _canonical_edges(graphs[1])
     
-    common_edges = edges_g1.intersection(edges_g2)
-    unique_g1 = edges_g1 - edges_g2
-    unique_g2 = edges_g2 - edges_g1
+    # Shared = same pair and same sign; everything else is unique to its graph.
+    common_edges = set(shared_edges(graphs[0], graphs[1]))
+    unique_g1 = edges_g1 - common_edges
+    unique_g2 = edges_g2 - common_edges
 
     if common_edges:
         G_common_layout = graphs[0].edge_subgraph(common_edges).copy()
@@ -384,9 +383,7 @@ def plot_common_only_detailed(
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs required.")
 
-    edges_g1 = set(graphs[0].edges())
-    edges_g2 = set(graphs[1].edges())
-    common_edges = edges_g1.intersection(edges_g2)
+    common_edges = shared_edges(graphs[0], graphs[1])
 
     if not common_edges:
         print("No common edges found.")
@@ -489,9 +486,7 @@ def export_common_edges_to_excel(
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs required.")
 
-    edges_g1 = set(graphs[0].edges())
-    edges_g2 = set(graphs[1].edges())
-    common_edges = edges_g1.intersection(edges_g2)
+    common_edges = shared_edges(graphs[0], graphs[1])
 
     if not common_edges:
         print("No common edges found to export.")

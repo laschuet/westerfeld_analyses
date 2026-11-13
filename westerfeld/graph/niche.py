@@ -8,7 +8,7 @@ from adjustText import adjust_text
 
 from _utils import edge_kingdom_type
 from ncm import taxa_bounds
-from graph.comparison import _edge_color, _node_color
+from graph.comparison import _edge_color, _node_color, shared_edges
 
 NICHE_BY_PREDICTION = {"above": "Generalist", "below": "Specialist", "neutral": None}
 
@@ -39,61 +39,43 @@ def ncm_niche_classification(results):
     print(f"NCM niche classification ({results[0].label}): {counts.to_dict()}")
     return niche
 
-def identify_generalists_or_specialists(df_relative):
+# Niche of a taxon across the two habitat networks (see `niche_status`) and its
+# ring style (colour, line width) in the network plots.
+NICHE_STATUS_STYLE = {
+    "Consistent Generalist": ("blue", 2.5),
+    "Consistent Specialist": ("red", 2.5),
+    "Niche Switched": ("orange", 3.0),
+    "Other": ("#454545", 0.5),
+}
+
+
+def niche_status(G1, G2, node):
     """
-    Identifiziert Generalisten und Spezialisten basierend auf Occurrence Frequency 
-    und lokaler Abundanz (Mean Abundance given Presence).
-
-    Kriterien:
-    - Generalist: Occurrence Frequency >= 60% der Samples.
-    - Spezialist: Occurrence Frequency <= 5% der Samples UND 
-                  lokal abundant (mittlere Abundanz in positiven Samples >= 5%).
-    
-    Parameters
-    ----------
-    df_relative : pd.DataFrame
-        DataFrame mit relativen Abundanzen. 
-        Rows = Samples, Columns = Taxa.
-
-    Returns
-    -------
-    classifications : pd.Series
-        Klassifizierung pro Taxon ("Generalist", "Specialist" oder None).
-    mean_rel_abundances : pd.Series
-        Globale mittlere relative Abundanz pro Taxon (über alle Samples).
-    occurrence_frequencies : pd.Series
-        Anteil der Samples, in denen das Taxon vorkommt (> 0).
+    Niche of `node` in two habitat networks: "Consistent Generalist" or
+    "Consistent Specialist" (same class in both), "Niche Switched" (generalist
+    in one habitat, specialist in the other) or "Other" (unclassified in at
+    least one habitat).
     """
-    if df_relative.empty:
-        return pd.Series(dtype=object), pd.Series(dtype=float), pd.Series(dtype=float)
+    n1 = G1.nodes[node].get("generalist_or_specialist", "None")
+    n2 = G2.nodes[node].get("generalist_or_specialist", "None")
+    if n1 == n2 and n1 in ("Generalist", "Specialist"):
+        return f"Consistent {n1}"
+    if {n1, n2} == {"Generalist", "Specialist"}:
+        return "Niche Switched"
+    return "Other"
 
-    n_samples, n_taxa = df_relative.shape
-    mean_rel_abundances = df_relative.mean(axis=0)
-    occurrence_frequencies = (np.count_nonzero(df_relative, axis=0) / n_samples)
 
-    local_abundances = df_relative.replace(0, np.nan).mean(axis=0)
-
-    classifications = pd.Series(None, index=df_relative.columns, dtype=object)
-
-    # --- Generalisten Logik ---
-    gen_occ_mask = occurrence_frequencies >= 0.60
-    gen_abund_thresh = local_abundances.quantile(0.60)
-    gen_abund_mask = local_abundances < gen_abund_thresh
-    generalist_mask = gen_occ_mask & gen_abund_mask
-    classifications[generalist_mask] = "Generalist"
-
-    # --- Spezialisten Logik ---
-    spec_occ_mask = occurrence_frequencies <= 0.40
-    spec_abund_thresh = local_abundances.quantile(0.60)
-    spec_abund_mask = local_abundances >= spec_abund_thresh
-    specialist_mask = spec_occ_mask & spec_abund_mask
-    classifications[specialist_mask] = "Specialist"
-
-    print(f"Generalists: {generalist_mask.sum()} ({generalist_mask.mean()*100:.1f}%)")
-    print(f"Specialists: {specialist_mask.sum()} ({specialist_mask.mean()*100:.1f}%)")
-    print(f"Unclassified: {n_taxa - generalist_mask.sum() - specialist_mask.sum()} ({(1 - generalist_mask.mean() - specialist_mask.mean())*100:.1f}%)")
-
-    return classifications, mean_rel_abundances, occurrence_frequencies
+def _niche_legend_handles(counts):
+    """Legend entries (with counts) for the classified niche statuses."""
+    return [
+        plt.Line2D(
+            [0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10,
+            label=f"{status} (n={counts[status]})",
+            markeredgecolor=color, markeredgewidth=width,
+        )
+        for status, (color, width) in NICHE_STATUS_STYLE.items()
+        if status != "Other"
+    ]
 
 def _annotate_niche(G, df_lookup, niche):
     """
@@ -192,8 +174,6 @@ def plot_occurrence_vs_abundance_grid(
     niche_values = df["Niche_Class"].dropna()
     unique_classes = set()
     for val in niche_values:
-        if isinstance(val, pd.Series):
-            val = val.iloc[0]  # Extrahiere Skalar
         unique_classes.add(str(val) if val is not None else "None")
 
     for ax, label in zip(axes, labels):
@@ -204,10 +184,9 @@ def plot_occurrence_vs_abundance_grid(
                 # ✅ Konvertiere niche_class zu String
                 niche_class_str = str(niche_class) if niche_class is not None else "None"
                 
-                # ✅ Extrahiere Skalar aus jeder Zeile in df_habitat["Niche_Class"]
                 subset = df_habitat[
                     (df_habitat["Kingdom"] == kingdom) & 
-                    (df_habitat["Niche_Class"].apply(lambda x: str(x.iloc[0]) if isinstance(x, pd.Series) else str(x) if x is not None else "None") == niche_class_str)
+                    (df_habitat["Niche_Class"].astype(str) == niche_class_str)
                 ]
                 
                 if not subset.empty:
@@ -288,8 +267,6 @@ def plot_niche_grid(
         important_nodes = set()
         for n in G_original.nodes:
             niche = G_original.nodes[n].get("generalist_or_specialist", "None")
-            if isinstance(niche, pd.Series):
-                niche = niche.iloc[0]
             niche_str = str(niche) if niche is not None else "None"
             if niche_str in ["Generalist", "Specialist"]:
                 important_nodes.add(n)
@@ -350,8 +327,6 @@ def plot_niche_grid(
             
             # 2. Nische für Rand
             niche = G_filtered.nodes[n].get("generalist_or_specialist", "None")
-            if isinstance(niche, pd.Series):
-                niche = niche.iloc[0]
             niche_str = str(niche) if niche is not None else "None"
             
             if niche_str == "Generalist":
@@ -427,10 +402,8 @@ def plot_niche_consistency(
 
     G1, G2 = graphs[0], graphs[1]
     
-    # 1. Gemeinsame Kanten finden
-    edges_g1 = set(G1.edges())
-    edges_g2 = set(G2.edges())
-    common_edges = edges_g1.intersection(edges_g2)
+    # 1. Gemeinsame Kanten finden (gleiches Paar, gleiches Vorzeichen)
+    common_edges = shared_edges(G1, G2)
     
     if not common_edges:
         print("Keine gemeinsamen Kanten gefunden.")
@@ -451,50 +424,14 @@ def plot_niche_consistency(
     linewidths_nodes = []
     
     # Kategorien für die Legende
-    status_counts = {"Consistent Gen": 0, "Consistent Spec": 0, "Switched": 0, "Unclassified": 0}
+    status_counts = {status: 0 for status in NICHE_STATUS_STYLE}
 
     for n in G_common.nodes():
-        # Nische in G1
-        n1 = G1.nodes[n].get("generalist_or_specialist", "None")
-        if isinstance(n1, pd.Series): n1 = n1.iloc[0]
-        n1_str = str(n1) if n1 is not None else "None"
-        
-        # Nische in G2
-        n2 = G2.nodes[n].get("generalist_or_specialist", "None")
-        if isinstance(n2, pd.Series): n2 = n2.iloc[0]
-        n2_str = str(n2) if n2 is not None else "None"
+        status = niche_status(G1, G2, n)
+        edge_color, lw = NICHE_STATUS_STYLE[status]
+        status_counts[status] += 1
 
-        # Logik zur Färbung
-        face_color = _node_color(G_common, n) # Taxonomie (Pilz/Bakt)
-        
-        is_gen_1 = (n1_str == "Generalist")
-        is_spec_1 = (n1_str == "Specialist")
-        is_gen_2 = (n2_str == "Generalist")
-        is_spec_2 = (n2_str == "Specialist")
-        
-        # Fallunterscheidung
-        if is_gen_1 and is_gen_2:
-            # Konsistenter Generalist
-            edge_color = "blue"
-            lw = 2.5
-            status_counts["Consistent Gen"] += 1
-        elif is_spec_1 and is_spec_2:
-            # Konsistenter Spezialist
-            edge_color = "red"
-            lw = 2.5
-            status_counts["Consistent Spec"] += 1
-        elif (is_gen_1 and is_spec_2) or (is_spec_1 and is_gen_2):
-            # Nischen-Wechsel (Switch)
-            edge_color = "orange" # Auffällig
-            lw = 3.0
-            status_counts["Switched"] += 1
-        else:
-            # Unclassified oder uneinheitlich (z.B. Gen vs None)
-            edge_color = "#454545"
-            lw = 0.5
-            status_counts["Unclassified"] += 1
-            
-        node_colors.append(face_color)
+        node_colors.append(_node_color(G_common, n))  # Taxonomie (Pilz/Bakt)
         edge_colors_nodes.append(edge_color)
         linewidths_nodes.append(lw)
 
@@ -522,9 +459,7 @@ def plot_niche_consistency(
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#2E8B57", markersize=8, label="Fungi", markeredgecolor="gray"),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#81BADB", markersize=8, label="Bacteria", markeredgecolor="gray"),
         plt.Line2D([], [], color="none", label=""), 
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Consistent Generalist (n={status_counts['Consistent Gen']})", markeredgecolor="blue", markeredgewidth=2.5),
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Consistent Specialist (n={status_counts['Consistent Spec']})", markeredgecolor="red", markeredgewidth=2.5),
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Niche Switched (n={status_counts['Switched']})", markeredgecolor="orange", markeredgewidth=3.0),
+        *_niche_legend_handles(status_counts),
     ]
     
     fig.legend(handles=legend_handles, loc="upper center", ncol=3, frameon=False)
@@ -544,8 +479,8 @@ def plot_niche_stability_and_degree_change(
 ):
     """
     Vergleicht alle Knoten, die in beiden Graphen existieren.
-    Zeigt, ob sich der Degree (Vernetzungsgrad) geändert hat, 
-    während die Nische stabil blieb.
+    Zeigt die Änderung des Degree (Vernetzungsgrad) und die Nische in beiden
+    Habitaten (see `niche_status`).
     """
     if len(graphs) != 2:
         raise ValueError("Exactly 2 graphs are required.")
@@ -578,18 +513,13 @@ def plot_niche_stability_and_degree_change(
     node_sizes = []
     
     # Statistiken
-    stats = {
-        "Gen_Stable": 0, "Spec_Stable": 0, "Unclassified": 0,
-        "High_Change": 0, "Low_Change": 0
-    }
+    stats = {status: 0 for status in NICHE_STATUS_STYLE}
+    stats.update({"High_Change": 0, "Low_Change": 0})
 
     for n in node_list:
-        # Nische bestimmen (wir nehmen an, sie ist gleich, da 0 Switches, 
-        # aber wir prüfen es zur Sicherheit für G1)
-        niche = G1.nodes[n].get("generalist_or_specialist", "None")
-        if isinstance(niche, pd.Series): niche = niche.iloc[0]
-        niche_str = str(niche) if niche is not None else "None"
-        
+        # Nische in beiden Habitaten
+        status = niche_status(G1, G2, n)
+
         # Degree berechnen
         deg1 = G1.degree(n)
         deg2 = G2.degree(n)
@@ -599,18 +529,8 @@ def plot_niche_stability_and_degree_change(
         face_color = _node_color(G_vis, n)
         
         # Umrandung (Nische)
-        if niche_str == "Generalist":
-            edge_color = "blue"
-            lw = 2.0
-            stats["Gen_Stable"] += 1
-        elif niche_str == "Specialist":
-            edge_color = "red"
-            lw = 2.0
-            stats["Spec_Stable"] += 1
-        else:
-            edge_color = "#454545"
-            lw = 0.5
-            stats["Unclassified"] += 1
+        edge_color, lw = NICHE_STATUS_STYLE[status]
+        stats[status] += 1
             
         # Knotengröße basierend auf Degree-Änderung
         size = base_node_size + (degree_diff * 30)
@@ -649,9 +569,7 @@ def plot_niche_stability_and_degree_change(
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#2E8B57", markersize=8, label="Fungi", markeredgecolor="gray"),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="#81BADB", markersize=8, label="Bacteria", markeredgecolor="gray"),
         plt.Line2D([], [], color="none", label=""), 
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Generalist (n={stats['Gen_Stable']})", markeredgecolor="blue", markeredgewidth=2),
-        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=10, label=f"Specialist (n={stats['Spec_Stable']})", markeredgecolor="red", markeredgewidth=2),
-        plt.Line2D([], [], color="none", label=""), 
+        *_niche_legend_handles(stats),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=5, label=f"Stable Degree (n={stats['Low_Change']})", markeredgecolor="black", markeredgewidth=1),
         plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray", markersize=15, label=f"High Degree Change (n={stats['High_Change']})", markeredgecolor="black", markeredgewidth=1),
     ]
@@ -698,7 +616,6 @@ def plot_degree_shift_scatter(
         
         # Nische
         niche = G1.nodes[n].get("generalist_or_specialist", "None")
-        if isinstance(niche, pd.Series): niche = niche.iloc[0]
         niche_str = str(niche) if niche is not None else "None"
         
         # Taxonomie (für Marker)
@@ -800,7 +717,6 @@ def plot_degree_shift_scatter_labeled(
     for n in common_nodes:
         # Nische prüfen
         niche = G1.nodes[n].get("generalist_or_specialist", "None")
-        if isinstance(niche, pd.Series): niche = niche.iloc[0]
         niche_str = str(niche) if niche is not None else "None"
         
         # Nur Generalisten und Spezialisten behalten
@@ -914,14 +830,12 @@ def plot_degree_shift_scatter_labeled_split(
 
     # Daten sammeln
     data = []
-    for n in common_nodes:
-        # Nische prüfen
-        niche = G1.nodes[n].get("generalist_or_specialist", "None")
-        if isinstance(niche, pd.Series): niche = niche.iloc[0]
-        niche_str = str(niche) if niche is not None else "None"
+    for n in sorted(common_nodes):
+        # Nische in beiden Habitaten (see `niche_status`)
+        niche_str = niche_status(G1, G2, n)
         
-        # Nur Generalisten und Spezialisten behalten
-        if niche_str not in ["Generalist", "Specialist"]:
+        # Nur Taxa behalten, die in beiden Habitaten klassifiziert sind
+        if niche_str == "Other":
             continue
             
         # Degree
@@ -933,7 +847,7 @@ def plot_degree_shift_scatter_labeled_split(
         kingdom = "Fungi" if tax_color == "#2E8B57" else "Bacteria"
         
         # Farbe für Plot
-        color = "blue" if niche_str == "Generalist" else "red"
+        color = NICHE_STATUS_STYLE[niche_str][0]
         
         # Taxon Name bereinigen
         node_name_str = str(n)
@@ -1005,11 +919,11 @@ def plot_degree_shift_scatter_labeled_split(
         if texts:
             if kingdom == "Bacteria":
                  # FALL 1: Bakterien -> Manuelles Labeling MIT Pfeilen
-                for i, txt in enumerate(texts):
+                for k, txt in enumerate(texts):
                     x, y = txt.get_position()
                     
                     # Position berechnen (abwechselnd oben/unten)
-                    offset_y = 4 if i % 2 == 0 else -8
+                    offset_y = 4 if k % 2 == 0 else -8
                     label_x = x
                     label_y = y + offset_y
                     
@@ -1042,12 +956,14 @@ def plot_degree_shift_scatter_labeled_split(
 
     # Gemeinsame Legende erstellen (außerhalb der Plots)
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='Generalist', markerfacecolor='blue', markersize=10, markeredgecolor='black'),
-        Line2D([0], [0], marker='o', color='w', label='Specialist', markerfacecolor='red', markersize=10, markeredgecolor='black'),
+        Line2D([0], [0], marker='o', color='w', label=status, markerfacecolor=color, markersize=10, markeredgecolor='black')
+        for status, (color, _) in NICHE_STATUS_STYLE.items()
+        if status != "Other"
+    ] + [
         Line2D([0], [0], color='k', linestyle='--', label='No Change (x=y)'),
     ]
     
-    fig.legend(handles=legend_elements, loc="upper center", ncol=3, frameon=False)
+    fig.legend(handles=legend_elements, loc="upper center", ncol=4, frameon=False)
     
     plt.tight_layout(rect=[0, 0, 1, 0.92]) # Platz für Legende oben
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -1077,8 +993,8 @@ def analyze_niche(graphs, labels):
         attrs1 = G1.nodes[node]
         attrs2 = G2.nodes[node]
 
-        niche1 = attrs1.get("generalist_or_specialists", "None")
-        niche2 = attrs2.get("generalist_or_specialists", "None")
+        niche1 = attrs1.get("generalist_or_specialist", "None")
+        niche2 = attrs2.get("generalist_or_specialist", "None")
         taxon_name = node.split(":")[-1]
         kingdom = attrs1.get("kingdom", "Unknown")
 

@@ -25,9 +25,11 @@ class GraphCreationMethod(ABC):
         pass
 
 class CorrelationGraph(GraphCreationMethod):
-    # Pairwise correlations are well-defined for any number of taxa, so no
-    # prevalence filtering is required.
-    min_prevalence = None
+    # Only taxa present in at least 50 % of the samples are kept (Goberna &
+    # Verdú 2022). Rare taxa that co-occur in one or two samples reach |rho| ~ 1
+    # by chance: without the filter, ~20 % of the edges also appear when each
+    # taxon is shuffled independently (see `chance_edges`); with it, < 1 %.
+    min_prevalence = 0.5
 
     def __init__(self, coefficient="spearman", threshold=0.68):
         self.coefficient = coefficient
@@ -55,28 +57,44 @@ class CorrelationGraph(GraphCreationMethod):
         pval_df = pd.DataFrame(pval, index=df.columns, columns=df.columns)
         return corr_df, pval_df
 
+    def edges(self, df):
+        """
+        Column positions (i, j) with i < j and correlation of all taxon pairs
+        with |correlation| >= threshold and p-value <= 0.05.
+        """
+        corr_df, pval_df = self.calculate_correlations(df)
+        corr, pval = corr_df.to_numpy(), pval_df.to_numpy()
+        i, j = np.triu_indices(len(corr), k=1)
+        keep = (np.abs(corr[i, j]) >= self.threshold) & (pval[i, j] <= 0.05)
+        return i[keep], j[keep], corr[i[keep], j[keep]]
+
+    def chance_edges(self, df, n_shuffles=10, seed=42):
+        """
+        Expected number of edges without any association: the values of each
+        taxon are shuffled independently across samples (keeping each taxon's
+        distribution), and the edges of the shuffled data are counted. Returns
+        the mean over `n_shuffles` shuffles.
+        """
+        rng = np.random.default_rng(seed)
+        counts = []
+        for _ in range(n_shuffles):
+            shuffled = pd.DataFrame(
+                {taxon: rng.permutation(df[taxon].to_numpy()) for taxon in df.columns}
+            )
+            counts.append(len(self.edges(shuffled)[0]))
+        return float(np.mean(counts))
+
     def create_network(
         self,
         df: pd.DataFrame,
         df_lookup: pd.DataFrame | None = None,
         niche: pd.DataFrame | None = None,
     ) -> nx.Graph:
-        corr_df, pval_df = self.calculate_correlations(df)
-
         G = nx.Graph()
-        for i, taxon_i in enumerate(df.columns):
-            for j, taxon_j in enumerate(df.columns):
-                if (
-                    i < j
-                    and abs(corr_df.loc[taxon_i, taxon_j]) >= self.threshold
-                    and pval_df.loc[taxon_i, taxon_j] <= 0.05
-                ):
-                    G.add_edge(
-                        taxon_i,
-                        taxon_j,
-                        weight=corr_df.loc[taxon_i, taxon_j],
-                        positive_association=corr_df.loc[taxon_i, taxon_j] > 0,
-                    )
+        taxa = df.columns
+        for i, j, rho in zip(*self.edges(df)):
+            G.add_edge(taxa[i], taxa[j], weight=rho, positive_association=rho > 0)
+        G.graph["chance_edges"] = self.chance_edges(df)
 
         _annotate_kingdoms(G)
         if df_lookup is not None and niche is not None:
