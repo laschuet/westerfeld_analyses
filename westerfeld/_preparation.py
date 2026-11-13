@@ -19,6 +19,19 @@ EXPERIMENT_COLUMNS = [
     "Precrop",
 ]
 
+# Samples with a low share of reads in one phylum, per kingdom: (phylum,
+# threshold). In 2019 winter wheat, the share of Actinomycetota reads splits the
+# bacterial samples into two groups: about half have at most 4.3 % (median
+# 1.5 %), the others at least 5.1 % (median 21 %). The low samples cluster in
+# winter wheat 1 (suspected technical cause: extraction/PCR/sequencing batch).
+LOW_PHYLUM = {"Bacteria": ("Actinomycetota", 0.05)}
+
+# Global switch: if True, `common_preparation` removes the samples flagged by
+# LOW_PHYLUM, so every analysis (ordination, NCM, co-occurrence, taxa
+# prediction) works without them. Set to False to keep them. A single call can
+# override it via the `exclude_low_phylum` argument of `common_preparation`.
+EXCLUDE_LOW_PHYLUM = False
+
 
 def resolve_filter(values, df, column):
     """
@@ -287,7 +300,7 @@ def precrop(row):
         return "Winter barley"
 
 
-def rarefy(df, sample_total=0):
+def rarefy(df, sample_total=0, seed=42):
     """
     Perform rarefaction.
 
@@ -297,7 +310,10 @@ def rarefy(df, sample_total=0):
         Absolute abundances.
     sample_total : int, optional
         Target read depth. If 0 or larger than the maximum sample depth,
-        the minimum sample depth is used.
+        the minimum sample depth is used. Otherwise, samples with fewer reads
+        than `sample_total` are dropped and all others are subsampled to it.
+    seed : int, optional
+        Seed of the random subsampling.
 
     Returns
     -------
@@ -311,9 +327,15 @@ def rarefy(df, sample_total=0):
     if sample_total == 0 or sample_total >= max_sample_total:
         sample_total = min_sample_total
 
+    n_dropped = (sample_totals < sample_total).sum()
+    if n_dropped:
+        print(
+            f"Rarefaction to {sample_total} reads drops {n_dropped} sample(s) "
+            f"with fewer reads: {sorted(sample_totals[sample_totals < sample_total])}"
+        )
     df = df.loc[sample_totals >= sample_total]
 
-    rng = np.random.default_rng(666)
+    rng = np.random.default_rng(seed)
     for i, counts in enumerate(df.to_numpy()):
         total = counts.sum()
 
@@ -322,16 +344,72 @@ def rarefy(df, sample_total=0):
 
         positions = rng.choice(total, size=sample_total, replace=False)
         cumsum = np.cumsum(counts)
-        taxa = np.searchsorted(cumsum, positions)
+        # Read positions 0..total-1; taxon j owns [cumsum[j-1], cumsum[j]).
+        # side="right" maps a position equal to cumsum[j-1] to taxon j (with
+        # the default side="left" it would go to taxon j-1, shifting one read).
+        taxa = np.searchsorted(cumsum, positions, side="right")
         new_counts = np.bincount(taxa, minlength=len(counts))
         df.iloc[i] = new_counts
 
     return df
 
 
+def phylum_reads(df):
+    return df.pivot_table(
+        index=EXPERIMENT_COLUMNS,
+        columns="Phylum",
+        values="Value_abs",
+        aggfunc="sum",
+        fill_value=0,
+    )
+
+
+def low_phylum_flags(df, kingdom):
+    """
+    True if the sample's share of reads in the phylum given in LOW_PHYLUM is
+    below the threshold. Computed on the long table as returned by
+    `common_preparation` (unrarefied reads). None if LOW_PHYLUM defines no
+    rule for `kingdom`.
+    """
+    if kingdom not in LOW_PHYLUM:
+        return None
+
+    phylum, threshold = LOW_PHYLUM[kingdom]
+    reads = phylum_reads(df)
+    in_phylum = reads[phylum] if phylum in reads.columns else 0
+
+    return (in_phylum / reads.sum(axis=1)) < threshold
+
+
+def drop_low_phylum(df, kingdom):
+    """Remove all rows of the samples flagged by `low_phylum_flags`."""
+    flags = low_phylum_flags(df, kingdom)
+    if flags is None or not flags.any():
+        return df
+
+    phylum, threshold = LOW_PHYLUM[kingdom]
+    print(
+        f"{flags.sum()} of {len(flags)} samples with "
+        f"< {threshold:.0%} {phylum} reads affected...",
+        end="",
+    )
+    flagged_samples = flags.index[flags]
+    row_samples = pd.MultiIndex.from_frame(df[EXPERIMENT_COLUMNS])
+
+    return df[~row_samples.isin(flagged_samples)]
+
+
 def common_preparation(
-    kingdom, years=None, habitats=None, beneficials=None, crops=None
+    kingdom,
+    years=None,
+    habitats=None,
+    beneficials=None,
+    crops=None,
+    exclude_low_phylum=None,
 ):
+    if exclude_low_phylum is None:
+        exclude_low_phylum = EXCLUDE_LOW_PHYLUM
+
     print("Join all related tables and keep important columns only...", end="")
     if kingdom == "Fungi":
         df = prepare_fungi()
@@ -410,6 +488,11 @@ def common_preparation(
     df["Precrop"] = df.apply(precrop, axis=1)
     print("DONE")
 
+    if exclude_low_phylum and kingdom in LOW_PHYLUM:
+        print("Exclude low phylum...", end="")
+        df = drop_low_phylum(df, kingdom)
+        print("DONE")
+
     df.reset_index(inplace=True, drop=True)
 
     return df
@@ -436,7 +519,7 @@ def taxa_table(df, taxonomy):
     )
 
 
-def rarefied_taxa_table(df, taxonomy):
+def rarefied_taxa_table(df, taxonomy, sample_total=0):
     """
     Pivot the long table into a wide table of absolute abundances
     (rows = samples, columns = taxa) aggregated at the given taxonomy level,
@@ -448,8 +531,10 @@ def rarefied_taxa_table(df, taxonomy):
         Long table (as returned by `common_preparation`).
     taxonomy : str
         Taxonomy column to aggregate at (e.g. "Species", "Genus", "Family").
+    sample_total : int, optional
+        Target read depth passed to `rarefy` (0 = depth of the smallest sample).
     """
-    return rarefy(taxa_table(df, taxonomy))
+    return rarefy(taxa_table(df, taxonomy), sample_total)
 
 
 def relative_abundances(df):
