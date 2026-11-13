@@ -34,12 +34,7 @@ from graph.niche import (
     plot_niche_grid,
     plot_niche_consistency,
     plot_niche_stability_and_degree_change,
-    plot_degree_shift_scatter,
-    plot_degree_shift_scatter_labeled,
     plot_degree_shift_scatter_labeled_split,
-    analyze_niche,
-    plot_degree_change_old,
-    plot_consistent_degree_change_comparison_old,
 )
 
  
@@ -287,14 +282,11 @@ def main():
     plot_common_only_detailed(graphs, labels)
 
     # Plots niche
-    #df_overlap, df_change = analyze_niche(graphs, labels)
     plot_occurrence_vs_abundance_grid(graphs, labels)
     plot_niche_grid(graphs, labels)
     plot_niche_consistency(graphs, labels)
     plot_niche_stability_and_degree_change(graphs, labels)
     plot_degree_shift_scatter_labeled_split(graphs, labels)
-    #plot_degree_change_old(graphs, labels)
-    #plot_consistent_degree_change_comparison_old(graphs, labels)
 
 
     # Excel exports 

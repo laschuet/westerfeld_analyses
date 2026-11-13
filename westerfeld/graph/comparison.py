@@ -47,8 +47,10 @@ def graph_metrics(G: nx.Graph) -> dict:
         "diameter": nx.diameter(H),
         "avg_shortest_path": nx.average_shortest_path_length(H),
         "avg_clustering": nx.average_clustering(G),
+        # Edge weights are signed correlations, which modularity cannot handle,
+        # so communities (Louvain, fixed seed) and modularity use the unweighted graph.
         "modularity": nx.community.modularity(
-            G, nx.community.label_propagation_communities(G)
+            G, nx.community.louvain_communities(G, weight=None, seed=42), weight=None
         ),
         # Expected number of edges without any association (see
         # `CorrelationGraph.chance_edges`); NaN for other graph types.
@@ -112,9 +114,6 @@ def _canonical_edges(G: nx.Graph):
     """Return edges as a set of sorted tuples (so (a,b) == (b,a))."""
     return {tuple(sorted(e)) for e in G.edges}
 
-def shared_nodes(G1: nx.Graph, G2: nx.Graph):
-    return sorted(set(G1.nodes) & set(G2.nodes))
-
 def shared_edges(G1: nx.Graph, G2: nx.Graph):
     """
     Edges present in both graphs with the same sign of association, as sorted
@@ -130,15 +129,6 @@ def shared_edges(G1: nx.Graph, G2: nx.Graph):
         == G2.edges[u, v].get("positive_association")
     )
 
-def _edge_type_edges(G: nx.Graph, edge_type: str | None) -> set[tuple]:
-    return {
-        tuple(sorted((u, v)))
-        for u, v in G.edges()
-        if edge_kingdom_type(G, u, v) == edge_type
-    }
-
-def shared_edges_by_type(G1: nx.Graph, G2: nx.Graph, edge_type: str) -> list:
-    return sorted(_edge_type_edges(G1, edge_type) & _edge_type_edges(G2, edge_type))
 ### (4) ###
 
 ### (5) ###
@@ -186,25 +176,9 @@ def compare_graphs_pairwise(
                 matrix.iloc[i, j] = fn(gi, gj, **metric_kwargs)
     return matrix
 
-def compare_graphs_pairwise_edge_type_iou(
-    graphs: list[nx.Graph], labels: list[str], edge_type: str
-):
-    return compare_graphs_pairwise(
-        graphs, labels, "edges_iou", pair_type=edge_type
-    )
-
-def compare_graphs_pairwise_node_type_iou(
-    graphs: list[nx.Graph], labels: list[str], kingdom: str
-):
-    return compare_graphs_pairwise(
-        graphs, labels, "nodes_iou", pair_type=kingdom
-    )
 ### (5) ###
 
 ### (6) ###
-def node_kingdom(G: nx.Graph, node):
-    return _parse_node_kingdom(G, node)
-
 def graph_subgraph_by_node_kingdom(G: nx.Graph, kingdom: str):
     nodes = [n for n in G.nodes if _parse_node_kingdom(G, n) == kingdom]
     return G.subgraph(nodes).copy()
@@ -216,12 +190,6 @@ def graph_subgraph_by_edge_kingdom(G: nx.Graph, edge_type: str):
             H.add_edge(u, v, **data)
     nx.set_node_attributes(H, {n: G.nodes[n] for n in H.nodes})
     return H
-
-def graph_metrics_by_kingdom(G: nx.Graph, kingdom: str):
-    return graph_metrics(graph_subgraph_by_node_kingdom(G, kingdom))
-
-def graph_metrics_by_edge_type(G: nx.Graph, edge_type: str):
-    return graph_metrics(graph_subgraph_by_edge_kingdom(G, edge_type))
 
 def graph_node_type_summary(G: nx.Graph) -> pd.DataFrame:
     """Summarize each kingdom's induced subgraph by node type."""

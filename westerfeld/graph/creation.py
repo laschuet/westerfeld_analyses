@@ -30,6 +30,11 @@ class CorrelationGraph(GraphCreationMethod):
     # by chance: without the filter, ~20 % of the edges also appear when each
     # taxon is shuffled independently (see `chance_edges`); with it, < 1 %.
     min_prevalence = 0.5
+    # Sample-index levels whose group means are removed from each taxon before
+    # correlating, e.g. ("Crop", "Treatment"): edges then show co-variation
+    # within the same crop and management instead of shared responses to them.
+    # None pools all samples.
+    design_factors = None
 
     def __init__(self, coefficient="spearman", threshold=0.68):
         self.coefficient = coefficient
@@ -60,7 +65,9 @@ class CorrelationGraph(GraphCreationMethod):
     def edges(self, df):
         """
         Column positions (i, j) with i < j and correlation of all taxon pairs
-        with |correlation| >= threshold and p-value <= 0.05.
+        with |correlation| >= threshold and p-value <= 0.05. With ~30 samples,
+        |rho| >= 0.68 already means p < 0.001, so the p-value only matters for
+        very few samples (n < ~10).
         """
         corr_df, pval_df = self.calculate_correlations(df)
         corr, pval = corr_df.to_numpy(), pval_df.to_numpy()
@@ -90,6 +97,8 @@ class CorrelationGraph(GraphCreationMethod):
         df_lookup: pd.DataFrame | None = None,
         niche: pd.DataFrame | None = None,
     ) -> nx.Graph:
+        if self.design_factors:
+            df = df - df.groupby(level=list(self.design_factors)).transform("mean")
         G = nx.Graph()
         taxa = df.columns
         for i, j, rho in zip(*self.edges(df)):

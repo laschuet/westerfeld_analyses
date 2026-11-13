@@ -1,5 +1,3 @@
-import math
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,7 +17,6 @@ from _preparation import (
     rarefied_taxa_table,
     relative_abundances,
 )
-from _utils import calc_iou
 
 
 @dataclass

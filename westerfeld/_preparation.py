@@ -1,9 +1,5 @@
-import math
-
 import numpy as np
 import pandas as pd
-
-from scipy.stats import gmean
 
 
 EXPERIMENT_COLUMNS = [
@@ -557,17 +553,15 @@ def filter_prevalence(df, min_prevalence):
 
 def mclr(df, pseudocount=1):
     """
-    Modified centered log-ratio transform (rows = samples, columns = taxa).
+    Modified centered log-ratio transform (Yoon et al. 2019; rows = samples,
+    columns = taxa).
 
-    Zeros stay zero; the non-zero log-ratios are shifted to be strictly positive
-    so they remain distinct from the (structural) zeros.
+    The CLR is taken over each sample's non-zero entries; zeros stay zero. All
+    non-zero values are then shifted by one global constant (|min CLR| +
+    `pseudocount`) so they stay positive and distinct from the zeros. As the
+    shift is the same for every sample, the CLR differences between samples are kept.
     """
-    transformed = df.copy()
-    for index, row in df.iterrows():
-        non_zero_elements = row[row > 0]
-        geometric_mean = gmean(non_zero_elements)
-        row = row.apply(lambda x: math.log10(x / geometric_mean) if x != 0 else 0)
-        epsilon = abs(row[row != 0].min()) + pseudocount
-        row = row.apply(lambda x: (x + epsilon) if x != 0 else 0)
-        transformed.loc[index] = row
-    return transformed
+    log = np.log(df.where(df > 0))
+    clr = log.sub(log.mean(axis=1), axis=0)
+    shift = abs(min(clr.min().min(), 0)) + pseudocount
+    return (clr + shift).fillna(0)

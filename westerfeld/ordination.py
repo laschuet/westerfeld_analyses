@@ -140,15 +140,7 @@ def ordination(type_label, df_relative, perplexity):
         relative abundances). The returned embedding keeps the per-sample metadata
         index, so it can be coloured/marked by any experimental factor afterwards.
     """
-    n_samples = df_relative.shape[0]
-    print(f"Learning manifold over {n_samples} samples...")
-
-    # t-SNE requires perplexity < n_samples; clamp so a fixed value never crashes
-    # on a small filtered subset.
-    if perplexity >= n_samples:
-        perplexity = max(1, n_samples - 1)
-        print(f"Perplexity reduced to {perplexity} (must stay below n_samples).")
-
+    print(f"Learning manifold over {df_relative.shape[0]} samples...")
     embedding, kl_divergence, trust = _tsne(df_relative, perplexity)
     embedding_df = pd.DataFrame(embedding, columns=["x", "y"], index=df_relative.index)
     print(f"KL divergence: {kl_divergence:.4f}, trustworthiness: {trust:.4f}")
@@ -217,7 +209,23 @@ def plot_ordination_multi(results, stats, color_by, marker_by=None, path="Fig1_o
     """
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-    my_colors = ['#FF8C00', '#2E8B57']
+    # One color per `color_by` and one marker per `marker_by` category, used for
+    # both the points and the legend.
+    def categories(level):
+        return sorted({c for r in results.values() for c in r.embedding.index.get_level_values(level)})
+
+    colors = ['#FF8C00', '#2E8B57']
+    markers = ['o', '^']
+    color_map = {c: colors[i % len(colors)] for i, c in enumerate(categories(color_by))}
+    marker_map = {} if marker_by is None else {
+        m: markers[i % len(markers)] for i, m in enumerate(categories(marker_by))
+    }
+    abbreviations = {
+        "Field_Soil": "FS",
+        "Rhizosphere": "RH",
+        "Winter wheat 1": "WW1",
+        "Winter wheat 2": "WW2",
+    }
 
     for ax, (type_label, result) in zip(axes, results.items()):
         x = result.embedding["x"].to_numpy()
@@ -233,8 +241,8 @@ def plot_ordination_multi(results, stats, color_by, marker_by=None, path="Fig1_o
         r2_perm = f_stat * (g - 1) / (f_stat * (g - 1) + (n - g))
         p_val_disp = disp_res['p-value']
 
-        perm_str = f"p < 0.001" if p_val_perm < 0.001 else f"p = {p_val_perm:.3f}"
-        disp_str = f"p < 0.001" if p_val_disp < 0.001 else f"p = {p_val_disp:.3f}"
+        perm_str = "p < 0.001" if p_val_perm < 0.001 else f"p = {p_val_perm:.3f}"
+        disp_str = "p < 0.001" if p_val_disp < 0.001 else f"p = {p_val_disp:.3f}"
 
         stat_text = (f"PERMANOVA: $R^2$ = {r2_perm:.2f}, {perm_str}\n"
                      f"PERMDISP:  {disp_str}")
@@ -250,62 +258,30 @@ def plot_ordination_multi(results, stats, color_by, marker_by=None, path="Fig1_o
                 fontsize=10, verticalalignment='top', color='black',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
-        if marker_by is None:
-            for i, color_category in enumerate(np.unique(color_values)):
+        marker_values = (
+            None if marker_by is None else result.embedding.index.get_level_values(marker_by)
+        )
+        for color_category, color in color_map.items():
+            for marker_category, marker in (marker_map.items() or [(None, "o")]):
                 mask = color_values == color_category
-                current_color = my_colors[i % len(my_colors)]
-                ax.scatter(
-                    x[mask],
-                    y[mask],
-                    color=current_color,
-                    label=str(color_category),
-                )
-        else:
-            marker_values = result.embedding.index.get_level_values(marker_by)
-            markers = ['o', '^'] 
+                if marker_values is not None:
+                    mask &= marker_values == marker_category
+                ax.scatter(x[mask], y[mask], marker=marker, color=color)
 
-            abbreviations = {
-                "Field_Soil": "FS",
-                "Winter wheat 1": "WW1",
-                "Winter wheat 2": "WW2",
-                "Rhizosphere": "RH"
-            }
-            
-            for i, color_category in enumerate(np.unique(color_values)):
-                for j, marker_category in enumerate(np.unique(marker_values)):
-                    mask = (color_values == color_category) & (
-                        marker_values == marker_category
-                    )
-                    if not mask.any():
-                        continue
-                    
-                    current_color = my_colors[i % len(my_colors)]
-                    current_marker = markers[j % len(markers)]
-                    
-                    ax.scatter(
-                        x[mask],
-                        y[mask],
-                        marker=current_marker,
-                        color=current_color,
-                    )
+    def header(text):
+        return Line2D([0], [0], marker='o', color='w', label=text, markerfacecolor='none', markersize=0)
 
-    legend_elements = []
-
-    unique_colors = np.unique([abbreviations.get(cat, cat) for result in results.values() for cat in result.embedding.index.get_level_values(color_by)])
-    unique_markers = np.unique([abbreviations.get(cat, cat) for result in results.values() for cat in result.embedding.index.get_level_values(marker_by)])
-
-    color_map = {cat: my_colors[i % len(my_colors)] for i, cat in enumerate(np.unique([abbreviations.get(cat, cat) for result in results.values() for cat in result.embedding.index.get_level_values(color_by)]))}
-    
-    legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', label='Habitat', markerfacecolor='none', markersize=0))
-    for cat in unique_colors:
-        legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map.get(cat, 'black'), markersize=10, label=cat))
-
-    legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', label='Crop', markerfacecolor='none', markersize=0))
-    
-    marker_map = {'WW1': 'o', 'WW2': '^'}
-    for cat in unique_markers:
-        if cat in marker_map:
-            legend_elements.append(plt.Line2D([0], [0], marker=marker_map[cat], color='black', markerfacecolor='black', markersize=10, label=cat))
+    legend_elements = [header(color_by)] + [
+        Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10,
+               label=abbreviations.get(category, category))
+        for category, color in color_map.items()
+    ]
+    if marker_map:
+        legend_elements += [header(marker_by)] + [
+            Line2D([0], [0], marker=marker, color='black', markerfacecolor='black', markersize=10,
+                   linestyle='none', label=abbreviations.get(category, category))
+            for category, marker in marker_map.items()
+        ]
 
     fig.legend(handles=legend_elements, loc='center left', bbox_to_anchor=(1.0, 0.5))
 
