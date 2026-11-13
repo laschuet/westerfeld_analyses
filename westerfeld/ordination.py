@@ -279,7 +279,12 @@ def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordinati
                 crops=["Winter wheat 1", "Winter wheat 2"]
             )
             p_val_perm = perm_res['p-value']
-            
+            # R^2 (share of variation explained by habitat) from pseudo-F:
+            # F = (R^2 / (g - 1)) / ((1 - R^2) / (n - g))
+            f_stat = perm_res['test statistic']
+            n, g = perm_res['sample size'], perm_res['number of groups']
+            r2_perm = f_stat * (g - 1) / (f_stat * (g - 1) + (n - g))
+
             disp_res = permdisp(
                 type_label, 
                 "Genus", 
@@ -294,7 +299,7 @@ def plot_ordination_multi(results, color_by, marker_by=None, path="Fig1_ordinati
             perm_str = f"p < 0.001" if p_val_perm < 0.001 else f"p = {p_val_perm:.3f}"
             disp_str = f"p < 0.001" if p_val_disp < 0.001 else f"p = {p_val_disp:.3f}"
             
-            stat_text = (f"PERMANOVA: {perm_str}\n"
+            stat_text = (f"PERMANOVA: $R^2$ = {r2_perm:.2f}, {perm_str}\n"
                          f"PERMDISP:  {disp_str}")
                          
         except Exception as e:
