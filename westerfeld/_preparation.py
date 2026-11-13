@@ -32,6 +32,13 @@ LOW_PHYLUM = {"Bacteria": ("Actinomycetota", 0.05)}
 # override it via the `exclude_low_phylum` argument of `common_preparation`.
 EXCLUDE_LOW_PHYLUM = False
 
+# Minimum number of reads per sample: `rarefy` removes samples with fewer reads
+# before rarefying to the smallest remaining sample, so one very shallow sample
+# does not set the depth for all others. In 2019 winter wheat, this affects
+# only one bacterial sample (2,392 reads; next smallest 6,585), which is also a
+# low-Actinomycetota sample. 0 disables the filter.
+MIN_READS = 6000
+
 
 def resolve_filter(values, df, column):
     """
@@ -320,6 +327,9 @@ def rarefy(df, sample_total=0, seed=42):
     pandas.DataFrame
         Rarefied table with absolute abundances.
     """
+    # Samples with fewer than MIN_READS reads are removed, not rarefied to.
+    df = df.loc[df.sum(axis=1) >= MIN_READS]
+
     sample_totals = df.sum(axis=1)
     min_sample_total = sample_totals.min()
     max_sample_total = sample_totals.max()
